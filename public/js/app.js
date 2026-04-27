@@ -1068,7 +1068,7 @@ $(function () {
       '</div>' +
       '</div>' +
       '<div class="node-main">' +
-      '<div class="node-body">' + nodeBodyHtml(n) + '</div>' +
+      '<div class="node-body"></div>' +
       outPorts +
       '</div>' +
       inPort +
@@ -1081,11 +1081,7 @@ $(function () {
     layer.empty();
 
     state.nodes.forEach(function (n) {
-      const card = $(buildNodeHtml(n));
-      card.css({ left: n.x, top: n.y, width: n.w, height: n.h });
-      if (card[0]) card[0].style.setProperty('--node-color', n.color || defaultColorForType(n.type));
-      layer.append(card);
-      initNodeInteractions(card, n);
+      layer.append(buildNodeCard(n));
     });
 
     updateSelectedButtons();
@@ -1093,6 +1089,7 @@ $(function () {
 
   function buildNodeCard(n) {
     const card = $(buildNodeHtml(n));
+    card.find('.node-body').html(nodeBodyHtml(n));
     card.css({ left: n.x, top: n.y, width: n.w, height: n.h });
     if (card[0]) card[0].style.setProperty('--node-color', n.color || defaultColorForType(n.type));
     initNodeInteractions(card, n);
