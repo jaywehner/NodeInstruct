@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/vendor/jquery-ui/jquery-ui.min.css" />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <title>NodeInstruct - Public Flow</title>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand">NodeInstruct</div>
+      <div id="flowTitle" class="flow-name">Public Flow</div>
+      <div class="spacer"></div>
+      <a href="/" class="ghost-link">Home</a>
+      <a href="/public-flows" class="ghost-link">Public Flows</a>
+      <a href="/app" class="ghost-link">App</a>
+      <button type="button" id="themeToggle" class="ghost">Theme</button>
+    </div>
+
+    <div id="layout" style="left:0;">
+      <div id="workspace" style="margin-left:0;">
+        <div id="canvas">
+          <svg id="link-layer"></svg>
+          <div id="node-layer"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/vendor/jquery/jquery.min.js"></script>
+    <script src="/vendor/jquery-ui/jquery-ui.min.js"></script>
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/public-flow.js"></script>
+  </body>
+</html>

@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/vendor/jquery-ui/jquery-ui.min.css" />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <title>Node Instruct</title>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand">Node Instruct</div>
+      <select id="flowSelect"></select>
+      <button type="button" id="newFlow" class="ghost">New</button>
+      <button type="button" id="renameFlow" class="ghost">Rename</button>
+      <button type="button" id="saveFlow" class="ghost">Save</button>
+      <label class="inline-check"><input type="checkbox" id="isPublicFlow" /> Public</label>
+      <button type="button" id="copyPublicLink" class="ghost" disabled>Copy Link</button>
+      <div class="zoom-controls">
+        <button type="button" id="zoomOut" class="ghost" title="Zoom out">-</button>
+        <button type="button" id="zoomReset" class="ghost" title="Reset zoom">100%</button>
+        <button type="button" id="zoomIn" class="ghost" title="Zoom in">+</button>
+      </div>
+      <span id="status" class="status"></span>
+      <div class="spacer"></div>
+      <a href="/public-flows" class="ghost-link">Public Flows</a>
+      <button type="button" id="themeToggle" class="ghost">Theme</button>
+      <button type="button" id="logoutBtn" class="ghost">Logout</button>
+      <button type="button" id="adminBtn" class="ghost" style="display:none;" title="Settings">&#9881;</button>
+    </div>
+
+    <div id="layout">
+      <div id="sidebar">
+        <div class="sidebar-head">
+          <button type="button" id="toggleSidebar" class="ghost" title="Toggle tools">Tools&lt;</button>
+        </div>
+
+        <div class="sidebar-content">
+          <div class="sidebar-group">
+            <div class="sidebar-title">Add Node</div>
+            <button type="button" id="addStart" class="ghost">Start</button>
+            <button type="button" id="addText" class="ghost">Text</button>
+            <button type="button" id="addImage" class="ghost">Image</button>
+            <button type="button" id="addFile" class="ghost">File</button>
+            <button type="button" id="addVideo" class="ghost">Video</button>
+            <button type="button" id="addAudio" class="ghost">Audio</button>
+            <button type="button" id="addEnd" class="ghost">End</button>
+          </div>
+
+          <div class="sidebar-group">
+            <div class="sidebar-title">Selected</div>
+            <button type="button" id="editNode" class="ghost" disabled>Edit</button>
+            <button type="button" id="colorNode" class="ghost" disabled>Color</button>
+            <button type="button" id="deleteNode" class="ghost" disabled>Delete</button>
+          </div>
+
+          <div class="sidebar-group">
+            <div class="sidebar-title">Connect</div>
+            <div style="font-size:12px;color:var(--muted);line-height:1.35;">
+              Drag from a node's output port to another node's input port.
+            </div>
+          </div>
+
+          <div class="sidebar-group sidebar-footer">
+            <button type="button" id="autoFormat" class="ghost">Auto Format</button>
+          </div>
+        </div>
+      </div>
+      <div id="sidebarResizer" aria-hidden="true"></div>
+
+      <div id="workspace">
+        <div id="canvas">
+          <svg id="link-layer"></svg>
+          <div id="node-layer"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/vendor/jquery/jquery.min.js"></script>
+    <script src="/vendor/jquery-ui/jquery-ui.min.js"></script>
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/app.js"></script>
+  </body>
+</html>

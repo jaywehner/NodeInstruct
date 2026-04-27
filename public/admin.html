@@ -1,0 +1,103 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/vendor/jquery-ui/jquery-ui.min.css" />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <title>NodeInstruct - Admin</title>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand">NodeInstruct</div>
+      <div class="flow-name">Admin</div>
+      <div class="spacer"></div>
+      <button type="button" id="backBtn" class="ghost">Back</button>
+      <button type="button" id="themeToggle" class="ghost">Theme</button>
+      <button type="button" id="logoutBtn" class="ghost">Logout</button>
+    </div>
+
+    <div style="padding:64px 12px 12px 12px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <button type="button" id="addUser" class="ghost">Add User</button>
+        <label style="display:inline-flex;align-items:center;gap:8px;margin:0;">
+          Max upload (MB)
+          <input id="maxUploadMb" type="number" min="1" max="2048" style="width:110px;" />
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:8px;margin:0;">
+          <input id="allowSelfRegister" type="checkbox" />
+          Allow self-registration
+        </label>
+        <button type="button" id="saveSettings" class="ghost">Save Settings</button>
+        <span id="status" class="status"></span>
+      </div>
+
+      <table class="ni-table" id="usersTable">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Role</th>
+            <th>Force Change</th>
+            <th>Created</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="usersBody"></tbody>
+      </table>
+
+      <div id="databaseSettings" style="margin-top:18px;padding:14px;border:1px solid var(--card-border);border-radius:12px;background:var(--panel-bg);">
+        <div style="font-size:14px;font-weight:700;margin-bottom:10px;">Database Backend</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;align-items:end;">
+          <div class="dialog-field" style="margin:0;">
+            <label>Current backend</label>
+            <div id="dbCurrentBackend" style="padding:10px;border:1px solid var(--card-border);border-radius:8px;background:var(--input-bg);min-height:40px;display:flex;align-items:center;">SQLite</div>
+          </div>
+          <div class="dialog-field" style="margin:0;">
+            <label>Target backend</label>
+            <select id="dbEngine">
+              <option value="sqlite">SQLite</option>
+              <option value="mysql">MySQL</option>
+              <option value="mariadb">MariaDB</option>
+            </select>
+          </div>
+          <div class="dialog-field" style="margin:0;">
+            <label>Host</label>
+            <input id="dbHost" type="text" />
+          </div>
+          <div class="dialog-field" style="margin:0;">
+            <label>Port</label>
+            <input id="dbPort" type="number" min="1" max="65535" />
+          </div>
+          <div class="dialog-field" style="margin:0;">
+            <label>Username</label>
+            <input id="dbUsername" type="text" />
+          </div>
+          <div class="dialog-field" style="margin:0;">
+            <label>Password</label>
+            <input id="dbPassword" type="password" />
+            <div id="dbPasswordHint" style="margin-top:6px;font-size:12px;color:var(--muted);"></div>
+            <label id="dbUseSavedPasswordWrap" style="display:none;align-items:center;gap:8px;margin-top:8px;">
+              <input id="dbUseSavedPassword" type="checkbox" />
+              Keep existing saved password
+            </label>
+          </div>
+          <div class="dialog-field" style="margin:0;">
+            <label>Database name</label>
+            <input id="dbName" type="text" />
+          </div>
+        </div>
+        <div id="dbLockedMessage" style="margin-top:10px;font-size:12px;color:var(--muted);"></div>
+        <div id="dbStatusMessage" style="margin-top:8px;font-size:12px;color:var(--muted);"></div>
+        <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px;">
+          <button type="button" id="testDatabaseConnection" class="ghost">Test Connection</button>
+          <button type="button" id="migrateDatabase" class="ghost">Migrate to MySQL/MariaDB</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/vendor/jquery/jquery.min.js"></script>
+    <script src="/vendor/jquery-ui/jquery-ui.min.js"></script>
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/admin.js"></script>
+  </body>
+</html>

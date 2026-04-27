@@ -1,0 +1,36 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nodeinstruct:latest
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      SESSION_SECRET: change-me-to-a-long-random-secret
+      BOOTSTRAP_ADMIN_USERNAME: admin
+      BOOTSTRAP_ADMIN_PASSWORD: change-me-now
+    volumes:
+      - nodeinstruct_data:/app/data
+      - nodeinstruct_storage:/app/storage
+    restart: unless-stopped
+
+  mariadb:
+    image: mariadb:11
+    profiles:
+      - external-db
+    environment:
+      MARIADB_DATABASE: nodeinstruct
+      MARIADB_USER: nodeinstruct
+      MARIADB_PASSWORD: change-me-now
+      MARIADB_ROOT_PASSWORD: change-me-root-now
+    volumes:
+      - nodeinstruct_mariadb:/var/lib/mysql
+    restart: unless-stopped
+
+volumes:
+  nodeinstruct_data:
+  nodeinstruct_storage:
+  nodeinstruct_mariadb:

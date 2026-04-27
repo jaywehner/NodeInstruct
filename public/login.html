@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/vendor/jquery-ui/jquery-ui.min.css" />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <title>Node Instruct - Login</title>
+  </head>
+  <body>
+    <div class="auth-shell">
+      <div class="auth-card">
+        <div class="auth-title-row">
+          <div class="auth-title">Node Instruct</div>
+          <button type="button" id="themeToggle" class="ghost">Theme</button>
+        </div>
+        <form id="loginForm">
+          <div class="auth-row">
+            <label for="username">Username</label>
+            <input id="username" type="text" autocomplete="username" required />
+          </div>
+          <div class="auth-row">
+            <label for="password">Password</label>
+            <input id="password" type="password" autocomplete="current-password" required />
+          </div>
+          <button type="submit" class="primary">Login</button>
+          <div id="error" class="error"></div>
+        </form>
+        <div class="auth-footer">
+          <a id="registerLink" href="/register" style="display:none;">Create an account</a>
+        </div>
+      </div>
+    </div>
+
+    <script src="/vendor/jquery/jquery.min.js"></script>
+    <script src="/vendor/jquery-ui/jquery-ui.min.js"></script>
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/login.js"></script>
+  </body>
+</html>

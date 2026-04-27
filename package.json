@@ -1,0 +1,22 @@
+{
+  "name": "nodeinstruct",
+  "version": "0.1.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.8.1",
+    "d3": "git+https://github.com/d3/d3.git",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "jquery": "^3.7.1",
+    "jquery-ui-dist": "^1.13.3",
+    "mysql2": "^3.11.3",
+    "multer": "^1.4.5-lts.1",
+    "sanitize-html": "^2.12.1",
+    "uuid": "^9.0.1"
+  }
+}
