@@ -370,6 +370,15 @@ $(function () {
     });
   }
 
+  function requireLiveNode(nodeId) {
+    const liveNode = nodeById(nodeId);
+    if (!liveNode) {
+      setStatus('The selected node is no longer available');
+      return null;
+    }
+    return liveNode;
+  }
+
   function defaultColorForType(type) {
     if (type === 'start') return '#2563eb';
     if (type === 'end') return '#64748b';
@@ -1385,14 +1394,19 @@ $(function () {
   }
 
   function openColorDialog(nodeId) {
-    const n = nodeById(nodeId);
+    const n = requireLiveNode(nodeId);
     if (!n) return;
 
     const dlg = $('<div title="Node Color"></div>');
     dlg.append('<div class="dialog-field"><label>Color</label><input id="nodeColor" type="color" /></div>');
 
     dlg.on('dialogopen', function () {
-      const c = String(n.color || defaultColorForType(n.type));
+      const liveNode = requireLiveNode(nodeId);
+      if (!liveNode) {
+        dlg.dialog('close');
+        return;
+      }
+      const c = String(liveNode.color || defaultColorForType(liveNode.type));
       $('#nodeColor').val(c);
     });
 
@@ -1401,8 +1415,13 @@ $(function () {
       width: 360,
       buttons: {
         Save: function () {
-          n.color = String($('#nodeColor').val() || defaultColorForType(n.type));
-          updateNodeElement(n);
+          const liveNode = requireLiveNode(nodeId);
+          if (!liveNode) {
+            dlg.dialog('close');
+            return;
+          }
+          liveNode.color = String($('#nodeColor').val() || defaultColorForType(liveNode.type));
+          updateNodeElement(liveNode);
           dlg.dialog('close');
         },
         Cancel: function () {
@@ -1488,7 +1507,9 @@ $(function () {
     return false;
   }
 
-  function openTextDialog(n) {
+  function openTextDialog(nodeId) {
+    const n = requireLiveNode(nodeId);
+    if (!n) return;
     const dlg = $('<div title="Text"></div>');
 
     dlg.append(
@@ -1535,8 +1556,13 @@ $(function () {
     });
 
     dlg.on('dialogopen', function () {
-      $('#textTitle').val(n.title || 'Text');
-      $('#textEditor').html((n.content && n.content.html) || '');
+      const liveNode = requireLiveNode(nodeId);
+      if (!liveNode) {
+        dlg.dialog('close');
+        return;
+      }
+      $('#textTitle').val(liveNode.title || 'Text');
+      $('#textEditor').html((liveNode.content && liveNode.content.html) || '');
     });
 
     dlg.dialog({
@@ -1545,11 +1571,16 @@ $(function () {
       height: 520,
       buttons: {
         Save: function () {
-          n.title = String($('#textTitle').val() || '').trim() || 'Text';
-          n.content = n.content || {};
-          n.content.html = $('#textEditor').html();
-          applyNodeOutputs(n, outputsEditor.getOutputs());
-          updateNodeElement(n);
+          const liveNode = requireLiveNode(nodeId);
+          if (!liveNode) {
+            dlg.dialog('close');
+            return;
+          }
+          liveNode.title = String($('#textTitle').val() || '').trim() || 'Text';
+          liveNode.content = liveNode.content || {};
+          liveNode.content.html = $('#textEditor').html();
+          applyNodeOutputs(liveNode, outputsEditor.getOutputs());
+          updateNodeElement(liveNode);
           dlg.dialog('close');
         },
         Cancel: function () {
@@ -1562,7 +1593,9 @@ $(function () {
     });
   }
 
-  function openUploadDialog(n, kind, accept) {
+  function openUploadDialog(nodeId, kind, accept) {
+    const n = requireLiveNode(nodeId);
+    if (!n) return;
     const titleMap = { image: 'Image', file: 'File', video: 'Video', audio: 'Audio' };
 
     const dlg = $('<div title="' + (titleMap[kind] || 'Upload') + '"></div>');
@@ -1596,11 +1629,16 @@ $(function () {
     dlg.append(outputsEditor.el);
 
     dlg.on('dialogopen', function () {
-      $('#upTitle').val(n.title || titleMap[kind] || 'Node');
+      const liveNode = requireLiveNode(nodeId);
+      if (!liveNode) {
+        dlg.dialog('close');
+        return;
+      }
+      $('#upTitle').val(liveNode.title || titleMap[kind] || 'Node');
       const input = $('#upFile');
       if (accept) input.attr('accept', accept);
-      $('#upCaptionEnabled').prop('checked', !!(n.content && n.content.captionEnabled));
-      $('#upCaptionText').val((n.content && n.content.captionText) || '');
+      $('#upCaptionEnabled').prop('checked', !!(liveNode.content && liveNode.content.captionEnabled));
+      $('#upCaptionText').val((liveNode.content && liveNode.content.captionText) || '');
     });
 
     dlg.dialog({
@@ -1611,29 +1649,41 @@ $(function () {
           $('#upError').text('');
           const fileInput = document.getElementById('upFile');
           const f = fileInput && fileInput.files && fileInput.files[0];
-          n.title = String($('#upTitle').val() || '').trim() || (titleMap[kind] || 'Node');
-          n.content = n.content || {};
-          n.content.captionEnabled = !!$('#upCaptionEnabled').prop('checked');
-          n.content.captionText = String($('#upCaptionText').val() || '').trim().slice(0, 200);
+          const liveNode = requireLiveNode(nodeId);
+          if (!liveNode) {
+            dlg.dialog('close');
+            return;
+          }
+          liveNode.title = String($('#upTitle').val() || '').trim() || (titleMap[kind] || 'Node');
+          liveNode.content = liveNode.content || {};
+          liveNode.content.captionEnabled = !!$('#upCaptionEnabled').prop('checked');
+          liveNode.content.captionText = String($('#upCaptionText').val() || '').trim().slice(0, 200);
 
-          applyNodeOutputs(n, outputsEditor.getOutputs());
+          applyNodeOutputs(liveNode, outputsEditor.getOutputs());
 
           if (!f) {
-            updateNodeElement(n);
+            updateNodeElement(liveNode);
             dlg.dialog('close');
             return;
           }
 
           const fd = new FormData();
           fd.append('file', f);
-          const oldUrl = n.content && n.content.file && n.content.file.url;
+          const oldUrl = liveNode.content && liveNode.content.file && liveNode.content.file.url;
           if (oldUrl) fd.append('oldUrl', oldUrl);
 
           setStatus('Uploading...');
           NI.apiForm('/api/upload?kind=' + encodeURIComponent(kind), fd)
             .done(function (resp) {
-              n.content.file = (resp && resp.file) || null;
-              updateNodeElement(n);
+              const refreshedNode = requireLiveNode(nodeId);
+              if (!refreshedNode) {
+                dlg.dialog('close');
+                setStatus('');
+                return;
+              }
+              refreshedNode.content = refreshedNode.content || {};
+              refreshedNode.content.file = (resp && resp.file) || null;
+              updateNodeElement(refreshedNode);
               setStatus('');
               dlg.dialog('close');
             })
@@ -1658,27 +1708,27 @@ $(function () {
     if (!state.canEdit) return;
 
     if (n.type === 'text') {
-      openTextDialog(n);
+      openTextDialog(nodeId);
       return;
     }
 
     if (n.type === 'image') {
-      openUploadDialog(n, 'image', '.png,.jpg,.jpeg,.gif,.tiff');
+      openUploadDialog(nodeId, 'image', '.png,.jpg,.jpeg,.gif,.tiff');
       return;
     }
 
     if (n.type === 'file') {
-      openUploadDialog(n, 'file', '.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.rtf,.zip,.xml,.json,.png,.jpg,.jpeg,.gif,.tiff,.mp3,.wav,.mp4,.mpeg,.avi,.webm,.wmv,.ogg,.mov,.m4v,.flac,.pptx,.ppt,.docm,.xlsm,.dotx,.xltx,.pub,.crt,.csr');
+      openUploadDialog(nodeId, 'file', '.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.rtf,.zip,.xml,.json,.png,.jpg,.jpeg,.gif,.tiff,.mp3,.wav,.mp4,.mpeg,.avi,.webm,.wmv,.ogg,.mov,.m4v,.flac,.pptx,.ppt,.docm,.xlsm,.dotx,.xltx,.pub,.crt,.csr');
       return;
     }
 
     if (n.type === 'video') {
-      openUploadDialog(n, 'video', '.mp4,.mpeg,.avi,.webm,.wmv,.ogg,.mov,.m4v');
+      openUploadDialog(nodeId, 'video', '.mp4,.mpeg,.avi,.webm,.wmv,.ogg,.mov,.m4v');
       return;
     }
 
     if (n.type === 'audio') {
-      openUploadDialog(n, 'audio', '.mp3,.wav,.ogg,.flac');
+      openUploadDialog(nodeId, 'audio', '.mp3,.wav,.ogg,.flac');
       return;
     }
 
@@ -1693,7 +1743,12 @@ $(function () {
     dlg.append(outputsEditor.el);
 
     dlg.on('dialogopen', function () {
-      $('#basicTitle').val(n.title || 'Node');
+      const liveNode = requireLiveNode(nodeId);
+      if (!liveNode) {
+        dlg.dialog('close');
+        return;
+      }
+      $('#basicTitle').val(liveNode.title || 'Node');
     });
 
     dlg.dialog({
@@ -1701,9 +1756,14 @@ $(function () {
       width: 420,
       buttons: {
         Save: function () {
-          n.title = String($('#basicTitle').val() || '').trim() || n.title;
-          applyNodeOutputs(n, outputsEditor.getOutputs());
-          updateNodeElement(n);
+          const liveNode = requireLiveNode(nodeId);
+          if (!liveNode) {
+            dlg.dialog('close');
+            return;
+          }
+          liveNode.title = String($('#basicTitle').val() || '').trim() || liveNode.title;
+          applyNodeOutputs(liveNode, outputsEditor.getOutputs());
+          updateNodeElement(liveNode);
           dlg.dialog('close');
         },
         Cancel: function () {

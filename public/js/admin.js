@@ -166,11 +166,12 @@ $(function () {
       });
 
       const delBtn = $('<button type="button" class="ghost" style="width:auto;margin-left:8px;">Delete</button>');
-      if (u.username === 'admin') {
+      if (u.isProtectedAdmin) {
         delBtn.prop('disabled', true);
+        delBtn.attr('title', 'The first admin account cannot be deleted');
       }
       delBtn.on('click', function () {
-        if (u.username === 'admin') return;
+        if (u.isProtectedAdmin) return;
         if (!confirm('Delete this user?')) return;
         setStatus('Deleting...');
         NI.apiJson('DELETE', '/api/admin/users/' + encodeURIComponent(u.id))

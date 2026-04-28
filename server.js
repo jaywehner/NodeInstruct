@@ -127,6 +127,23 @@ function validatePasswordRules(password) {
   return errors;
 }
 
+async function getProtectedAdminUserId() {
+  const users = await listUsers();
+  const admins = users
+    .filter((user) => user.role === 'admin')
+    .slice()
+    .sort((a, b) => {
+      const createdA = String(a.createdAt || '9999-12-31T23:59:59.999Z');
+      const createdB = String(b.createdAt || '9999-12-31T23:59:59.999Z');
+      if (createdA !== createdB) return createdA.localeCompare(createdB);
+      const usernameA = String(a.username || '').toLowerCase();
+      const usernameB = String(b.username || '').toLowerCase();
+      if (usernameA !== usernameB) return usernameA.localeCompare(usernameB);
+      return String(a.id || '').localeCompare(String(b.id || ''));
+    });
+  return admins[0] ? admins[0].id : null;
+}
+
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
@@ -666,12 +683,14 @@ app.get('/api/me', requireAuth, (req, res) => {
 });
 
 app.get('/api/admin/users', requireAuth, requirePasswordChange, requireAdmin, asyncRoute(async (req, res) => {
+  const protectedAdminUserId = await getProtectedAdminUserId();
   const users = (await listUsers()).map((u) => ({
     id: u.id,
     username: u.username,
     role: u.role,
     forcePasswordChange: !!u.forcePasswordChange,
     createdAt: u.createdAt,
+    isProtectedAdmin: u.id === protectedAdminUserId,
   }));
   res.json({ users });
 }));
@@ -781,7 +800,10 @@ app.delete('/api/admin/users/:id', requireAuth, requirePasswordChange, requireAd
   const { id } = req.params;
   const target = await getUserById(id);
   if (!target) return res.status(404).json({ error: 'User not found' });
-  if (target.username === 'admin') return res.status(400).json({ error: 'Cannot delete default admin' });
+  const protectedAdminUserId = await getProtectedAdminUserId();
+  if (protectedAdminUserId && target.id === protectedAdminUserId) {
+    return res.status(400).json({ error: 'Cannot delete the first admin account' });
+  }
 
   await deleteUser(id);
   res.json({ ok: true });
