@@ -1106,19 +1106,7 @@ $(function () {
   }
 
   function updateNodeElement(n) {
-    const existing = $('.node-card[data-id="' + n.id + '"]');
-    if (!existing.length) {
-      renderAll();
-      selectNode(n.id);
-      markDirty({ silentStatus: true });
-      return;
-    }
-
-    const replacement = buildNodeCard(n);
-    if (n.id === state.selectedNodeId) replacement.addClass('selected');
-    existing.replaceWith(replacement);
-    updateSelectedButtons();
-    updateLinks();
+    renderAll();
     selectNode(n.id);
     markDirty({ silentStatus: true });
   }
