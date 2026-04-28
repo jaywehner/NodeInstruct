@@ -23,6 +23,13 @@
             <label for="password">Password</label>
             <input id="password" type="password" autocomplete="new-password" required />
           </div>
+          <div class="auth-row">
+            <label for="confirmPassword">Confirm password</label>
+            <input id="confirmPassword" type="password" autocomplete="new-password" required />
+          </div>
+          <div id="passwordHelp" class="auth-help">
+            Use at least 8 characters with an uppercase letter, a lowercase letter, and a number.
+          </div>
           <button type="submit" class="primary">Register</button>
           <div id="error" class="error"></div>
         </form>

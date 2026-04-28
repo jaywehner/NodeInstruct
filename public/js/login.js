@@ -3,6 +3,10 @@ $(function () {
     NI.toggleTheme();
   });
 
+  $('#registerLink').on('click', function () {
+    window.location = '/register';
+  });
+
   NI.apiJson('GET', '/api/auth/config')
     .done(function (resp) {
       if (resp && resp.allowSelfRegister) {

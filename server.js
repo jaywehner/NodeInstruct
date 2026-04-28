@@ -117,6 +117,16 @@ if (IS_PROD && SESSION_SECRET === 'nodeinstruct-dev-secret') {
   throw new Error('SESSION_SECRET must be set in production');
 }
 
+function validatePasswordRules(password) {
+  const value = String(password || '');
+  const errors = [];
+  if (value.length < 8) errors.push('Password must be at least 8 characters long.');
+  if (!/[a-z]/.test(value)) errors.push('Password must include at least one lowercase letter.');
+  if (!/[A-Z]/.test(value)) errors.push('Password must include at least one uppercase letter.');
+  if (!/[0-9]/.test(value)) errors.push('Password must include at least one number.');
+  return errors;
+}
+
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
@@ -599,10 +609,12 @@ app.post('/api/auth/logout', (req, res) => {
 app.post('/api/auth/register', async (req, res) => {
   try {
     if (!isSelfRegisterEnabled()) return res.status(403).json({ error: 'Self-registration is disabled' });
-    const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
-    if (String(username).length < 3) return res.status(400).json({ error: 'Username too short' });
-    if (String(password).length < 6) return res.status(400).json({ error: 'Password too short' });
+    const { username, password, confirmPassword } = req.body;
+    if (!username || !password || !confirmPassword) return res.status(400).json({ error: 'Please fill in username, password, and confirm password.' });
+    if (String(username).length < 3) return res.status(400).json({ error: 'Username must be at least 3 characters long.' });
+    if (String(password) !== String(confirmPassword)) return res.status(400).json({ error: 'Passwords do not match.' });
+    const passwordErrors = validatePasswordRules(password);
+    if (passwordErrors.length) return res.status(400).json({ error: passwordErrors.join(' ') });
 
     const exists = await getUserByUsername(String(username));
     if (exists) return res.status(409).json({ error: 'Username already exists' });
@@ -625,7 +637,8 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!newPassword) return res.status(400).json({ error: 'Missing newPassword' });
-    if (String(newPassword).length < 6) return res.status(400).json({ error: 'Password too short' });
+    const passwordErrors = validatePasswordRules(newPassword);
+    if (passwordErrors.length) return res.status(400).json({ error: passwordErrors.join(' ') });
 
     const user = await getUserById(req.session.user.id);
     if (!user) return res.status(401).json({ error: 'Not found' });
@@ -752,7 +765,8 @@ app.put('/api/admin/users/:id', requireAuth, requirePasswordChange, requireAdmin
     if (typeof forcePasswordChange === 'boolean') patch.forcePasswordChange = forcePasswordChange;
 
     if (password) {
-      if (String(password).length < 6) return res.status(400).json({ error: 'Password too short' });
+      const passwordErrors = validatePasswordRules(password);
+      if (passwordErrors.length) return res.status(400).json({ error: passwordErrors.join(' ') });
       patch.passwordHash = await hashPassword(password);
     }
 
