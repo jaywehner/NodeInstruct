@@ -18,21 +18,31 @@ const {
   ALLOWED_UPLOAD_EXTENSIONS,
 } = require('./src/storage');
 
+const nodemailer = require('nodemailer');
+
 const {
   initDb,
   normalizeRole,
   getSetting,
   setSetting,
   getDatabaseStatus,
+  isDbReady,
   migrateSqliteToExternal,
   testExternalConnection,
+  testDatabaseConnection,
+  createAndInitDatabase,
+  reloadDb,
   countUsers,
   listUsers,
   getUserById,
   getUserByUsername,
+  getUserByVerificationToken,
   createUser,
   updateUser,
   deleteUser,
+  setPasswordResetToken,
+  getUserByPasswordResetTokenHash,
+  clearPasswordResetToken,
   listFlowsForOwner,
   getFlowForOwner,
   saveFlow,
@@ -69,9 +79,20 @@ const BOOTSTRAP_ADMIN_PASSWORD = String(process.env.BOOTSTRAP_ADMIN_PASSWORD || 
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
+const memorySessions = new Map();
+
 class SqliteSessionStore extends session.Store {
   get(sid, cb) {
     (async () => {
+      if (!isDbReady()) {
+        const entry = memorySessions.get(sid);
+        if (!entry) return cb(null, null);
+        if (entry.expiresAt <= Date.now()) {
+          memorySessions.delete(sid);
+          return cb(null, null);
+        }
+        return cb(null, JSON.parse(entry.sess || '{}'));
+      }
       await cleanupExpiredSessions(Date.now());
       const row = await getSessionRecord(sid);
       if (!row) return cb(null, null);
@@ -91,6 +112,10 @@ class SqliteSessionStore extends session.Store {
       const expiresAt = sess && sess.cookie && sess.cookie.expires
         ? new Date(sess.cookie.expires).getTime()
         : Date.now() + SESSION_TTL_MS;
+      if (!isDbReady()) {
+        memorySessions.set(sid, { expiresAt, sess: JSON.stringify(sess || {}) });
+        return cb && cb(null);
+      }
       await upsertSessionRecord(sid, JSON.stringify(sess || {}), expiresAt);
       return cb && cb(null);
     })().catch((err) => {
@@ -100,6 +125,10 @@ class SqliteSessionStore extends session.Store {
 
   destroy(sid, cb) {
     (async () => {
+      if (!isDbReady()) {
+        memorySessions.delete(sid);
+        return cb && cb(null);
+      }
       await deleteSessionRecord(sid);
       return cb && cb(null);
     })().catch((err) => {
@@ -221,6 +250,7 @@ function makeRateLimiter(options) {
   let lastCleanupAt = 0;
 
   return async function rateLimit(req, res, next) {
+    if (!isDbReady()) return next();
     const now = Date.now();
     const key = `${options.keyPrefix || 'rl'}:${req.ip || 'unknown'}`;
     try {
@@ -260,6 +290,7 @@ app.use('/static', express.static(path.join(__dirname, 'public')));
 app.use('/vendor/d3', express.static(path.join(__dirname, 'node_modules', 'd3', 'dist')));
 app.use('/vendor/jquery', express.static(path.join(__dirname, 'node_modules', 'jquery', 'dist')));
 app.use('/vendor/jquery-ui', express.static(path.join(__dirname, 'node_modules', 'jquery-ui-dist')));
+app.use('/vendor/html-to-image', express.static(path.join(__dirname, 'node_modules', 'html-to-image', 'dist')));
 
 function hashPassword(password) {
   return new Promise((resolve, reject) => {
@@ -279,6 +310,76 @@ function comparePassword(password, passwordHash) {
   });
 }
 
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
+function getSmtpSettings() {
+  return {
+    host: String(getSetting('smtp_host', '') || '').trim(),
+    port: parseInt(String(getSetting('smtp_port', '587') || ''), 10) || 587,
+    user: String(getSetting('smtp_user', '') || '').trim(),
+    pass: String(getSetting('smtp_pass', '') || ''),
+    from: String(getSetting('smtp_from', '') || '').trim(),
+    secure: String(getSetting('smtp_secure', '0')).toLowerCase() === '1',
+  };
+}
+
+function createSmtpTransport(settings) {
+  return nodemailer.createTransport({
+    host: settings.host,
+    port: settings.port,
+    secure: settings.secure,
+    auth: settings.user ? { user: settings.user, pass: settings.pass } : undefined,
+  });
+}
+
+async function testSmtpSettings(settings, testEmail) {
+  const transport = createSmtpTransport(settings);
+  try {
+    await transport.verify();
+    if (testEmail) {
+      await transport.sendMail({
+        from: settings.from || settings.user,
+        to: testEmail,
+        subject: 'NodeInstruct SMTP test',
+        text: 'This is a test email from NodeInstruct.',
+      });
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+function sendVerificationEmail(email, token) {
+  const settings = getSmtpSettings();
+  if (!settings.host || !settings.from) return Promise.resolve(false);
+  const transport = createSmtpTransport(settings);
+  const link = `${process.env.BASE_URL || `http://localhost:${PORT}`}/verify-email?token=${encodeURIComponent(token)}`;
+  return transport.sendMail({
+    from: settings.from,
+    to: email,
+    subject: 'Verify your NodeInstruct account',
+    text: `Click the link to verify your email: ${link}`,
+    html: `<p>Click the link to verify your email:</p><p><a href="${link}">${link}</a></p>`,
+  }).then(() => true).catch(() => false);
+}
+
+function sendPasswordResetEmail(email, token) {
+  const settings = getSmtpSettings();
+  if (!settings.host || !settings.from) return Promise.resolve(false);
+  const transport = createSmtpTransport(settings);
+  const link = `${process.env.BASE_URL || `http://localhost:${PORT}`}/reset-password?token=${encodeURIComponent(token)}`;
+  return transport.sendMail({
+    from: settings.from,
+    to: email,
+    subject: 'Reset your NodeInstruct password',
+    text: `Use this link to reset your password. It expires in one hour: ${link}`,
+    html: `<p>Use the link below to reset your NodeInstruct password. This link expires in one hour.</p><p><a href="${link}">${link}</a></p>`,
+  }).then(() => true).catch(() => false);
+}
+
 function regenerateSession(req) {
   return new Promise((resolve, reject) => {
     req.session.regenerate((err) => {
@@ -296,6 +397,8 @@ function asyncRoute(handler) {
 
 async function initDefaultAdmin() {
   if (await countUsers() > 0) return;
+  const setupComplete = getSetting('setup_complete') === '1';
+  if (!setupComplete && !BOOTSTRAP_ADMIN_PASSWORD) return;
 
   const bootstrapPassword = BOOTSTRAP_ADMIN_PASSWORD || crypto.randomBytes(12).toString('base64url');
   const passwordHash = await hashPassword(bootstrapPassword);
@@ -305,6 +408,8 @@ async function initDefaultAdmin() {
     passwordHash,
     role: 'admin',
     forcePasswordChange: true,
+    emailVerified: true,
+    verificationToken: null,
     createdAt: new Date().toISOString(),
   });
 
@@ -550,19 +655,50 @@ function uploadMiddleware(req, res, next) {
   mw(req, res, next);
 }
 
-app.get('/', (req, res) => {
+async function isSetupRequired() {
+  try {
+    if (!isDbReady()) return true;
+    return getSetting('setup_complete') !== '1' && await countUsers() === 0;
+  } catch {
+    return true;
+  }
+}
+
+app.get('/', async (req, res) => {
+  if (await isSetupRequired()) return res.redirect('/setup');
   if (!req.session.user) return res.redirect('/login');
   if (req.session.user.forcePasswordChange) return res.redirect('/force-password-change');
   return res.redirect('/app');
 });
 
-app.get('/login', (req, res) => {
+app.get('/setup', async (req, res) => {
+  if (!(await isSetupRequired())) return res.redirect('/login');
+  res.sendFile(path.join(__dirname, 'public', 'setup.html'));
+});
+
+app.get('/verify-email', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'verify-email.html'));
+});
+
+app.get('/login', async (req, res) => {
+  if (await isSetupRequired()) return res.redirect('/setup');
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-app.get('/register', (req, res) => {
+app.get('/register', async (req, res) => {
+  if (await isSetupRequired()) return res.redirect('/setup');
   if (!isSelfRegisterEnabled()) return res.redirect('/login');
   res.sendFile(path.join(__dirname, 'public', 'register.html'));
+});
+
+app.get('/forgot-password', async (req, res) => {
+  if (await isSetupRequired()) return res.redirect('/setup');
+  res.sendFile(path.join(__dirname, 'public', 'forgot-password.html'));
+});
+
+app.get('/reset-password', async (req, res) => {
+  if (await isSetupRequired()) return res.redirect('/setup');
+  res.sendFile(path.join(__dirname, 'public', 'reset-password.html'));
 });
 
 app.get('/force-password-change', requireAuth, (req, res) => {
@@ -595,10 +731,14 @@ app.post('/api/auth/login', async (req, res) => {
     if (!username || !password) return res.status(400).json({ error: 'Missing credentials' });
 
     const user = await getUserByUsername(String(username));
-    if (!user) return res.status(401).json({ error: 'Invalid username or password' });
+    if (!user) return res.status(401).json({ error: 'Invalid email or password' });
 
     const ok = await comparePassword(password, user.passwordHash);
-    if (!ok) return res.status(401).json({ error: 'Invalid username or password' });
+    if (!ok) return res.status(401).json({ error: 'Invalid email or password' });
+
+    if (!user.emailVerified) {
+      return res.status(401).json({ error: 'Email not verified. Check your inbox or contact an administrator.' });
+    }
 
     await regenerateSession(req);
     req.session.csrfToken = crypto.randomBytes(32).toString('hex');
@@ -627,28 +767,224 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     if (!isSelfRegisterEnabled()) return res.status(403).json({ error: 'Self-registration is disabled' });
     const { username, password, confirmPassword } = req.body;
-    if (!username || !password || !confirmPassword) return res.status(400).json({ error: 'Please fill in username, password, and confirm password.' });
-    if (String(username).length < 3) return res.status(400).json({ error: 'Username must be at least 3 characters long.' });
+    const email = String(username || '').trim().toLowerCase();
+    if (!email || !password || !confirmPassword) return res.status(400).json({ error: 'Please fill in email, password, and confirm password.' });
+    if (!isValidEmail(email)) return res.status(400).json({ error: 'Please enter a valid email address.' });
     if (String(password) !== String(confirmPassword)) return res.status(400).json({ error: 'Passwords do not match.' });
     const passwordErrors = validatePasswordRules(password);
     if (passwordErrors.length) return res.status(400).json({ error: passwordErrors.join(' ') });
 
-    const exists = await getUserByUsername(String(username));
-    if (exists) return res.status(409).json({ error: 'Username already exists' });
+    const exists = await getUserByUsername(email);
+    if (exists) return res.status(409).json({ error: 'Email already registered' });
 
-    await createUser({
+    const smtp = getSmtpSettings();
+    if (!smtp.host || !smtp.from) {
+      return res.status(503).json({ error: 'Registration is unavailable until email delivery is configured.' });
+    }
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+
+    const newUser = {
       id: uuidv4(),
-      username: String(username),
+      username: email,
       passwordHash: await hashPassword(password),
       role: 'editor',
       forcePasswordChange: false,
+      emailVerified: false,
+      verificationToken,
       createdAt: new Date().toISOString(),
-    });
-    return res.json({ ok: true });
+    };
+    await createUser(newUser);
+
+    const sent = await sendVerificationEmail(email, verificationToken);
+    if (!sent) {
+      return res.status(502).json({ error: 'Account created, but the verification email could not be sent. Use Resend verification email on the login page.' });
+    }
+
+    return res.json({ ok: true, message: 'Account created. Check your email for a verification link before signing in.' });
   } catch {
     return res.status(500).json({ error: 'Failed to register user' });
   }
 });
+
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    if (!isValidEmail(email)) return res.status(400).json({ error: 'Please enter a valid email address.' });
+    const user = await getUserByUsername(email);
+    if (user) {
+      const token = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      await setPasswordResetToken(user.id, tokenHash, Date.now() + 60 * 60 * 1000);
+      await sendPasswordResetEmail(email, token);
+    }
+    return res.json({ ok: true, message: 'If an account exists for that email, a password reset link has been sent.' });
+  } catch {
+    return res.status(500).json({ error: 'Failed to request password reset' });
+  }
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const token = String(req.body.token || '');
+    const password = String(req.body.password || '');
+    const confirmPassword = String(req.body.confirmPassword || '');
+    if (!token) return res.status(400).json({ error: 'Missing reset token' });
+    if (password !== confirmPassword) return res.status(400).json({ error: 'Passwords do not match.' });
+    const passwordErrors = validatePasswordRules(password);
+    if (passwordErrors.length) return res.status(400).json({ error: passwordErrors.join(' ') });
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const user = await getUserByPasswordResetTokenHash(tokenHash);
+    if (!user || Number(user.resetExpiresAt) <= Date.now()) {
+      if (user) await clearPasswordResetToken(user.id);
+      return res.status(400).json({ error: 'This password reset link is invalid or has expired.' });
+    }
+    await updateUser(user.id, { passwordHash: await hashPassword(password), forcePasswordChange: false });
+    await clearPasswordResetToken(user.id);
+    return res.json({ ok: true, message: 'Your password has been reset. You can now sign in.' });
+  } catch {
+    return res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+app.post('/api/auth/verify-email', async (req, res) => {
+  try {
+    const token = String(req.body.token || req.query.token || '');
+    if (!token) return res.status(400).json({ error: 'Missing verification token' });
+    const user = await getUserByVerificationToken(token);
+    if (!user) return res.status(400).json({ error: 'Invalid or expired verification token' });
+    await updateUser(user.id, { emailVerified: true, verificationToken: null });
+    return res.json({ ok: true });
+  } catch {
+    return res.status(500).json({ error: 'Failed to verify email' });
+  }
+});
+
+app.post('/api/auth/resend-verification', async (req, res) => {
+  try {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    if (!isValidEmail(email)) return res.status(400).json({ error: 'Please enter a valid email address.' });
+    const user = await getUserByUsername(email);
+    if (user && !user.emailVerified) {
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      await updateUser(user.id, { verificationToken });
+      await sendVerificationEmail(email, verificationToken);
+    }
+    return res.json({ ok: true, message: 'If the account requires verification, a new email has been sent.' });
+  } catch {
+    return res.status(500).json({ error: 'Failed to resend verification email' });
+  }
+});
+
+app.get('/api/setup/status', async (req, res) => {
+  res.json({ required: await isSetupRequired() });
+});
+
+app.post('/api/setup/database/test', asyncRoute(async (req, res) => {
+  const { engine } = req.body || {};
+  if (engine === 'sqlite') return res.json({ ok: true, engine: 'sqlite' });
+  if (engine === 'mariadb' || engine === 'mysql') {
+    const result = await testDatabaseConnection(req.body);
+    if (!result.ok) return res.status(400).json({ error: result.error || 'Connection failed' });
+    return res.json({ ok: true, engine });
+  }
+  return res.status(400).json({ error: 'Invalid database engine' });
+}));
+
+app.post('/api/setup/database/create', asyncRoute(async (req, res) => {
+  const { engine } = req.body || {};
+  if (engine === 'sqlite') {
+    const sqliteDbConfig = {
+      engine: 'sqlite',
+      locked: false,
+      migratedAt: null,
+      mysql: null,
+    };
+    fs.writeFileSync(path.join(__dirname, 'data', 'database-config.json'), JSON.stringify(sqliteDbConfig, null, 2));
+    await reloadDb();
+    return res.json({ ok: true, engine: 'sqlite' });
+  }
+  if (engine === 'mariadb' || engine === 'mysql') {
+    const result = await createAndInitDatabase(req.body);
+    if (!result.ok) return res.status(400).json({ error: result.error || 'Database creation failed' });
+    const dbConfig = {
+      engine,
+      locked: true,
+      migratedAt: null,
+      mysql: {
+        engine,
+        host: req.body.host,
+        port: parseInt(String(req.body.port || '3306'), 10) || 3306,
+        username: req.body.username,
+        password: req.body.password,
+        database: req.body.database,
+      },
+    };
+    fs.writeFileSync(path.join(__dirname, 'data', 'database-config.json'), JSON.stringify(dbConfig, null, 2));
+    await reloadDb();
+    return res.json({ ok: true, engine });
+  }
+  return res.status(400).json({ error: 'Invalid database engine' });
+}));
+
+app.post('/api/setup/smtp', asyncRoute(async (req, res) => {
+  const { host, port, user, pass, from, secure, testEmail } = req.body || {};
+  const portNum = parseInt(String(port || ''), 10);
+  if (Number.isNaN(portNum) || portNum < 1 || portNum > 65535) {
+    return res.status(400).json({ error: 'Invalid SMTP port' });
+  }
+  const settings = {
+    host: String(host || '').trim(),
+    port: portNum,
+    user: String(user || '').trim(),
+    pass: String(pass || ''),
+    from: String(from || '').trim(),
+    secure: !!secure,
+  };
+  if (!settings.host) {
+    return res.status(400).json({ error: 'SMTP host is required' });
+  }
+  const result = await testSmtpSettings(settings, String(testEmail || '').trim());
+  if (!result.ok) return res.status(400).json({ error: result.error });
+  await setSetting('smtp_host', settings.host);
+  await setSetting('smtp_port', String(settings.port));
+  await setSetting('smtp_user', settings.user);
+  await setSetting('smtp_from', settings.from);
+  await setSetting('smtp_secure', String(settings.secure ? '1' : '0'));
+  if (pass && pass !== '********') {
+    await setSetting('smtp_pass', pass);
+  }
+  return res.json({ ok: true });
+}));
+
+app.post('/api/setup/admin', asyncRoute(async (req, res) => {
+  const { email, password, confirmPassword } = req.body || {};
+  if (!email || !password || !confirmPassword) {
+    return res.status(400).json({ error: 'Missing fields' });
+  }
+  if (!isValidEmail(String(email))) {
+    return res.status(400).json({ error: 'Please enter a valid email address' });
+  }
+  if (String(password) !== String(confirmPassword)) {
+    return res.status(400).json({ error: 'Passwords do not match' });
+  }
+  const passwordErrors = validatePasswordRules(password);
+  if (passwordErrors.length) return res.status(400).json({ error: passwordErrors.join(' ') });
+  if (await countUsers() > 0) {
+    return res.status(403).json({ error: 'An administrator already exists' });
+  }
+  await createUser({
+    id: uuidv4(),
+    username: String(email).trim().toLowerCase(),
+    passwordHash: await hashPassword(password),
+    role: 'admin',
+    forcePasswordChange: false,
+    emailVerified: true,
+    verificationToken: null,
+    createdAt: new Date().toISOString(),
+  });
+  await setSetting('setup_complete', '1');
+  return res.json({ ok: true });
+}));
 
 app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   try {
@@ -689,6 +1025,7 @@ app.get('/api/admin/users', requireAuth, requirePasswordChange, requireAdmin, as
     username: u.username,
     role: u.role,
     forcePasswordChange: !!u.forcePasswordChange,
+    emailVerified: !!u.emailVerified,
     createdAt: u.createdAt,
     isProtectedAdmin: u.id === protectedAdminUserId,
   }));
@@ -697,10 +1034,19 @@ app.get('/api/admin/users', requireAuth, requirePasswordChange, requireAdmin, as
 
 app.get('/api/admin/settings', requireAuth, requirePasswordChange, requireAdmin, (req, res) => {
   const dbStatus = getDatabaseStatus();
+  const smtp = getSmtpSettings();
   res.json({
     maxUploadMb: getMaxUploadMb(),
     allowSelfRegister: isSelfRegisterEnabled(),
     database: dbStatus,
+    smtp: {
+      host: smtp.host,
+      port: smtp.port,
+      user: smtp.user,
+      pass: smtp.pass ? '********' : '',
+      from: smtp.from,
+      secure: smtp.secure,
+    },
   });
 });
 
@@ -743,21 +1089,89 @@ app.post('/api/admin/database/test', requireAuth, requirePasswordChange, require
   }
 }));
 
+app.get('/api/admin/smtp', requireAuth, requirePasswordChange, requireAdmin, (req, res) => {
+  const smtp = getSmtpSettings();
+  res.json({
+    host: smtp.host,
+    port: smtp.port,
+    user: smtp.user,
+    pass: smtp.pass ? '********' : '',
+    from: smtp.from,
+    secure: smtp.secure,
+  });
+});
+
+app.put('/api/admin/smtp', requireAuth, requirePasswordChange, requireAdmin, asyncRoute(async (req, res) => {
+  const { host, port, user, pass, from, secure } = req.body || {};
+  const portNum = parseInt(String(port || ''), 10);
+  if (Number.isNaN(portNum) || portNum < 1 || portNum > 65535) {
+    return res.status(400).json({ error: 'Invalid SMTP port' });
+  }
+  await setSetting('smtp_host', String(host || '').trim());
+  await setSetting('smtp_port', String(portNum));
+  await setSetting('smtp_user', String(user || '').trim());
+  await setSetting('smtp_from', String(from || '').trim());
+  await setSetting('smtp_secure', String(!!secure ? '1' : '0'));
+  if (pass && pass !== '********') {
+    await setSetting('smtp_pass', String(pass));
+  }
+  const smtp = getSmtpSettings();
+  res.json({
+    ok: true,
+    host: smtp.host,
+    port: smtp.port,
+    user: smtp.user,
+    pass: smtp.pass ? '********' : '',
+    from: smtp.from,
+    secure: smtp.secure,
+  });
+}));
+
+app.post('/api/admin/smtp/test', requireAuth, requirePasswordChange, requireAdmin, asyncRoute(async (req, res) => {
+  try {
+    const { host, port, user, pass, from, secure, testEmail } = req.body || {};
+    const portNum = parseInt(String(port || ''), 10);
+    if (Number.isNaN(portNum) || portNum < 1 || portNum > 65535) {
+      return res.status(400).json({ error: 'Invalid SMTP port' });
+    }
+    const settings = {
+      host: String(host || '').trim(),
+      port: portNum,
+      user: String(user || '').trim(),
+      pass: String(pass || ''),
+      from: String(from || '').trim(),
+      secure: !!secure,
+    };
+    if (!settings.host || !settings.user) {
+      return res.status(400).json({ error: 'SMTP host and user are required' });
+    }
+    const result = await testSmtpSettings(settings, String(testEmail || '').trim());
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'SMTP test failed' });
+  }
+}));
+
 app.post('/api/admin/users', requireAuth, requirePasswordChange, requireAdmin, async (req, res) => {
   try {
     const { username, password, role } = req.body;
-    if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
+    const email = String(username || '').trim();
+    if (!email || !password) return res.status(400).json({ error: 'Missing fields' });
+    if (!isValidEmail(email)) return res.status(400).json({ error: 'Please enter a valid email address' });
     if (!ROLE_VALUES.includes(normalizeRole(role))) return res.status(400).json({ error: 'Invalid role' });
 
-    const exists = await getUserByUsername(String(username));
-    if (exists) return res.status(409).json({ error: 'Username already exists' });
+    const exists = await getUserByUsername(email);
+    if (exists) return res.status(409).json({ error: 'Email already registered' });
 
     await createUser({
       id: uuidv4(),
-      username: String(username),
+      username: email,
       passwordHash: await hashPassword(password),
       role: normalizeRole(role),
       forcePasswordChange: false,
+      emailVerified: true,
+      verificationToken: null,
       createdAt: new Date().toISOString(),
     });
     res.json({ ok: true });
@@ -769,7 +1183,7 @@ app.post('/api/admin/users', requireAuth, requirePasswordChange, requireAdmin, a
 app.put('/api/admin/users/:id', requireAuth, requirePasswordChange, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { password, role, forcePasswordChange } = req.body;
+    const { password, role, forcePasswordChange, emailVerified } = req.body;
 
     const user = await getUserById(id);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -782,6 +1196,7 @@ app.put('/api/admin/users/:id', requireAuth, requirePasswordChange, requireAdmin
     }
 
     if (typeof forcePasswordChange === 'boolean') patch.forcePasswordChange = forcePasswordChange;
+    if (typeof emailVerified === 'boolean') patch.emailVerified = emailVerified;
 
     if (password) {
       const passwordErrors = validatePasswordRules(password);
@@ -921,6 +1336,8 @@ initDb()
     });
   })
   .catch((err) => {
-    console.error('Failed to initialize NodeInstruct', err);
-    process.exit(1);
+    console.error('Database initialization failed; starting in setup mode.', err.message || err);
+    app.listen(PORT, () => {
+      console.log(`NodeInstruct listening on http://localhost:${PORT} (setup mode)`);
+    });
   });

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/vendor/jquery-ui/jquery-ui.min.css" />
     <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/cpc-theme.css" />
     <title>NodeInstruct - Public Flow</title>
   </head>
   <body>
@@ -15,7 +16,13 @@
       <a href="/" class="ghost-link">Home</a>
       <a href="/public-flows" class="ghost-link">Public Flows</a>
       <a href="/app" class="ghost-link">App</a>
-      <button type="button" id="themeToggle" class="ghost">Theme</button>
+      <div class="zoom-controls">
+        <button type="button" id="zoomOut" class="ghost" title="Zoom out">-</button>
+        <button type="button" id="zoomReset" class="ghost" title="Reset zoom">100%</button>
+        <button type="button" id="zoomIn" class="ghost" title="Zoom in">+</button>
+      </div>
+      <button type="button" id="exportImage" class="ghost">Save as Image</button>
+      <button type="button" id="exportPdf" class="ghost">Save as PDF</button>
     </div>
 
     <div id="layout" style="left:0;">
@@ -29,6 +36,7 @@
 
     <script src="/vendor/jquery/jquery.min.js"></script>
     <script src="/vendor/jquery-ui/jquery-ui.min.js"></script>
+    <script src="/vendor/html-to-image/html-to-image.js"></script>
     <script src="/static/js/common.js"></script>
     <script src="/static/js/public-flow.js"></script>
   </body>

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/vendor/jquery-ui/jquery-ui.min.css" />
     <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/cpc-theme.css" />
     <title>NodeInstruct - Admin</title>
   </head>
   <body>
@@ -18,79 +19,130 @@
     </div>
 
     <div style="padding:64px 12px 12px 12px;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-        <button type="button" id="addUser" class="ghost">Add User</button>
-        <label style="display:inline-flex;align-items:center;gap:8px;margin:0;">
-          Max upload (MB)
-          <input id="maxUploadMb" type="number" min="1" max="2048" style="width:110px;" />
-        </label>
-        <label style="display:inline-flex;align-items:center;gap:8px;margin:0;">
-          <input id="allowSelfRegister" type="checkbox" />
-          Allow self-registration
-        </label>
-        <button type="button" id="saveSettings" class="ghost">Save Settings</button>
-        <span id="status" class="status"></span>
+      <div style="display:flex;gap:8px;margin-bottom:12px;border-bottom:1px solid var(--card-border);">
+        <button type="button" class="tab-btn ghost active" data-tab="users">Users</button>
+        <button type="button" class="tab-btn ghost" data-tab="database">Database</button>
+        <button type="button" class="tab-btn ghost" data-tab="smtp">SMTP</button>
       </div>
 
-      <table class="ni-table" id="usersTable">
-        <thead>
-          <tr>
-            <th>Username</th>
-            <th>Role</th>
-            <th>Force Change</th>
-            <th>Created</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="usersBody"></tbody>
-      </table>
+      <div id="tab-users" class="tab-section" style="display:block;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+          <button type="button" id="addUser" class="ghost">Add User</button>
+          <label style="display:inline-flex;align-items:center;gap:8px;margin:0;">
+            Max upload (MB)
+            <input id="maxUploadMb" type="number" min="1" max="2048" style="width:110px;" />
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:8px;margin:0;">
+            <input id="allowSelfRegister" type="checkbox" />
+            Allow self-registration
+          </label>
+          <button type="button" id="saveSettings" class="ghost">Save Settings</button>
+          <span id="status" class="status"></span>
+        </div>
 
-      <div id="databaseSettings" style="margin-top:18px;padding:14px;border:1px solid var(--card-border);border-radius:12px;background:var(--panel-bg);">
-        <div style="font-size:14px;font-weight:700;margin-bottom:10px;">Database Backend</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;align-items:end;">
-          <div class="dialog-field" style="margin:0;">
-            <label>Current backend</label>
-            <div id="dbCurrentBackend" style="padding:10px;border:1px solid var(--card-border);border-radius:8px;background:var(--input-bg);min-height:40px;display:flex;align-items:center;">SQLite</div>
+        <table class="ni-table" id="usersTable">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Verified</th>
+              <th>Force Change</th>
+              <th>Created</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="usersBody"></tbody>
+        </table>
+      </div>
+
+      <div id="tab-database" class="tab-section" style="display:none;">
+        <div id="databaseSettings" style="padding:14px;border:1px solid var(--card-border);border-radius:12px;background:var(--panel-bg);">
+          <div style="font-size:14px;font-weight:700;margin-bottom:10px;">Database Backend</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;align-items:end;">
+            <div class="dialog-field" style="margin:0;">
+              <label>Current backend</label>
+              <div id="dbCurrentBackend" style="padding:10px;border:1px solid var(--card-border);border-radius:8px;background:var(--input-bg);min-height:40px;display:flex;align-items:center;">SQLite</div>
+            </div>
+            <div class="dialog-field" style="margin:0;">
+              <label>Target backend</label>
+              <select id="dbEngine">
+                <option value="sqlite">SQLite</option>
+                <option value="mysql">MySQL</option>
+                <option value="mariadb">MariaDB</option>
+              </select>
+            </div>
+            <div class="dialog-field" style="margin:0;">
+              <label>Host</label>
+              <input id="dbHost" type="text" />
+            </div>
+            <div class="dialog-field" style="margin:0;">
+              <label>Port</label>
+              <input id="dbPort" type="number" min="1" max="65535" />
+            </div>
+            <div class="dialog-field" style="margin:0;">
+              <label>Username</label>
+              <input id="dbUsername" type="text" />
+            </div>
+            <div class="dialog-field" style="margin:0;">
+              <label>Password</label>
+              <input id="dbPassword" type="password" />
+              <div id="dbPasswordHint" style="margin-top:6px;font-size:12px;color:var(--muted);"></div>
+              <label id="dbUseSavedPasswordWrap" style="display:none;align-items:center;gap:8px;margin-top:8px;">
+                <input id="dbUseSavedPassword" type="checkbox" />
+                Keep existing saved password
+              </label>
+            </div>
+            <div class="dialog-field" style="margin:0;">
+              <label>Database name</label>
+              <input id="dbName" type="text" />
+            </div>
           </div>
-          <div class="dialog-field" style="margin:0;">
-            <label>Target backend</label>
-            <select id="dbEngine">
-              <option value="sqlite">SQLite</option>
-              <option value="mysql">MySQL</option>
-              <option value="mariadb">MariaDB</option>
-            </select>
-          </div>
-          <div class="dialog-field" style="margin:0;">
-            <label>Host</label>
-            <input id="dbHost" type="text" />
-          </div>
-          <div class="dialog-field" style="margin:0;">
-            <label>Port</label>
-            <input id="dbPort" type="number" min="1" max="65535" />
-          </div>
-          <div class="dialog-field" style="margin:0;">
-            <label>Username</label>
-            <input id="dbUsername" type="text" />
-          </div>
-          <div class="dialog-field" style="margin:0;">
-            <label>Password</label>
-            <input id="dbPassword" type="password" />
-            <div id="dbPasswordHint" style="margin-top:6px;font-size:12px;color:var(--muted);"></div>
-            <label id="dbUseSavedPasswordWrap" style="display:none;align-items:center;gap:8px;margin-top:8px;">
-              <input id="dbUseSavedPassword" type="checkbox" />
-              Keep existing saved password
-            </label>
-          </div>
-          <div class="dialog-field" style="margin:0;">
-            <label>Database name</label>
-            <input id="dbName" type="text" />
+          <div id="dbLockedMessage" style="margin-top:10px;font-size:12px;color:var(--muted);"></div>
+          <div id="dbStatusMessage" style="margin-top:8px;font-size:12px;color:var(--muted);"></div>
+          <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px;">
+            <button type="button" id="testDatabaseConnection" class="ghost">Test Connection</button>
+            <button type="button" id="migrateDatabase" class="ghost">Migrate to MySQL/MariaDB</button>
           </div>
         </div>
-        <div id="dbLockedMessage" style="margin-top:10px;font-size:12px;color:var(--muted);"></div>
-        <div id="dbStatusMessage" style="margin-top:8px;font-size:12px;color:var(--muted);"></div>
-        <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px;">
-          <button type="button" id="testDatabaseConnection" class="ghost">Test Connection</button>
-          <button type="button" id="migrateDatabase" class="ghost">Migrate to MySQL/MariaDB</button>
+      </div>
+
+      <div id="tab-smtp" class="tab-section" style="display:none;">
+        <div style="padding:14px;border:1px solid var(--card-border);border-radius:12px;background:var(--panel-bg);">
+          <div style="font-size:14px;font-weight:700;margin-bottom:10px;">SMTP Settings</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;align-items:end;">
+            <div class="dialog-field" style="margin:0;">
+              <label>SMTP host</label>
+              <input id="smtpHost" type="text" />
+            </div>
+            <div class="dialog-field" style="margin:0;">
+              <label>Port</label>
+              <input id="smtpPort" type="number" min="1" max="65535" value="587" />
+            </div>
+            <div class="dialog-field" style="margin:0;">
+              <label>Username</label>
+              <input id="smtpUser" type="text" />
+            </div>
+            <div class="dialog-field" style="margin:0;">
+              <label>Password</label>
+              <input id="smtpPass" type="password" />
+            </div>
+            <div class="dialog-field" style="margin:0;">
+              <label>From address</label>
+              <input id="smtpFrom" type="text" />
+            </div>
+            <div class="dialog-field" style="margin:0;">
+              <label><input id="smtpSecure" type="checkbox" /> Use TLS (secure)</label>
+            </div>
+            <div class="dialog-field" style="margin:0;">
+              <label>Test email</label>
+              <input id="smtpTestEmail" type="text" />
+            </div>
+          </div>
+          <div id="smtpStatus" style="margin-top:8px;font-size:12px;color:var(--muted);"></div>
+          <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px;">
+            <button type="button" id="testSmtp" class="ghost">Test SMTP</button>
+            <button type="button" id="saveSmtp" class="ghost">Save SMTP</button>
+          </div>
         </div>
       </div>
     </div>

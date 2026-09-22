@@ -1,0 +1,117 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/vendor/jquery-ui/jquery-ui.min.css" />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/cpc-theme.css" />
+    <title>NodeInstruct - Setup</title>
+  </head>
+  <body>
+    <div class="auth-shell">
+      <div class="auth-card" style="width:540px;max-width:90vw;">
+        <div class="auth-title-row">
+          <div class="auth-title">NodeInstruct Setup</div>
+        </div>
+
+        <div id="steps">
+          <div id="step1" class="setup-step">
+            <div class="auth-title" style="font-size:16px;margin-bottom:10px;">1. Database</div>
+            <div class="auth-row">
+              <label>Database type</label>
+              <select id="dbType">
+                <option value="sqlite">Local SQLite</option>
+                <option value="mariadb">MariaDB / MySQL</option>
+              </select>
+            </div>
+            <div id="dbExternal" style="display:none;">
+              <div class="auth-row">
+                <label>Host</label>
+                <input id="dbHost" type="text" value="localhost" />
+              </div>
+              <div class="auth-row">
+                <label>Port</label>
+                <input id="dbPort" type="number" value="3306" />
+              </div>
+              <div class="auth-row">
+                <label>Username</label>
+                <input id="dbUsername" type="text" />
+              </div>
+              <div class="auth-row">
+                <label>Password</label>
+                <input id="dbPassword" type="password" />
+              </div>
+              <div class="auth-row">
+                <label>Database name</label>
+                <input id="dbName" type="text" value="nodeinstruct" />
+              </div>
+            </div>
+            <div id="dbError" class="error"></div>
+            <div class="auth-row" style="display:flex;gap:8px;">
+              <button type="button" id="dbTest" class="ghost" style="display:none;">Test connection</button>
+              <button type="button" id="dbCreate" class="primary" style="display:none;">Create database</button>
+              <button type="button" id="dbContinue" class="primary">Continue</button>
+            </div>
+          </div>
+
+          <div id="step2" class="setup-step" style="display:none;">
+            <div class="auth-title" style="font-size:16px;margin-bottom:10px;">2. SMTP Email</div>
+            <div class="auth-row">
+              <label>SMTP host</label>
+              <input id="smtpHost" type="text" />
+            </div>
+            <div class="auth-row">
+              <label>Port</label>
+              <input id="smtpPort" type="number" value="587" />
+            </div>
+            <div class="auth-row">
+              <label>Username</label>
+              <input id="smtpUser" type="text" />
+            </div>
+            <div class="auth-row">
+              <label>Password</label>
+              <input id="smtpPass" type="password" />
+            </div>
+            <div class="auth-row">
+              <label>From address</label>
+              <input id="smtpFrom" type="text" />
+            </div>
+            <div class="auth-row">
+              <label><input id="smtpSecure" type="checkbox" /> Use TLS</label>
+            </div>
+            <div class="auth-row">
+              <label>Test email (optional)</label>
+              <input id="smtpTestEmail" type="text" placeholder="address to receive test" />
+            </div>
+            <div id="smtpError" class="error"></div>
+            <button type="button" id="smtpNext" class="primary">Test and continue</button>
+          </div>
+
+          <div id="step3" class="setup-step" style="display:none;">
+            <div class="auth-title" style="font-size:16px;margin-bottom:10px;">3. Create first admin</div>
+            <div class="auth-row">
+              <label>Email</label>
+              <input id="adminEmail" type="text" />
+            </div>
+            <div class="auth-row">
+              <label>Password</label>
+              <input id="adminPassword" type="password" />
+            </div>
+            <div class="auth-row">
+              <label>Confirm password</label>
+              <input id="adminConfirm" type="password" />
+            </div>
+            <div id="adminError" class="error"></div>
+            <button type="button" id="adminCreate" class="primary">Create admin and finish</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/vendor/jquery/jquery.min.js"></script>
+    <script src="/vendor/jquery-ui/jquery-ui.min.js"></script>
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/setup.js"></script>
+  </body>
+</html>

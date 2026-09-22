@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/vendor/jquery-ui/jquery-ui.min.css" />
     <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/cpc-theme.css" />
     <title>Node Instruct - Register</title>
   </head>
   <body>
@@ -12,12 +13,12 @@
       <div class="auth-card">
         <div class="auth-title-row">
           <div class="auth-title">Create Account</div>
-          <button type="button" id="themeToggle" class="ghost">Theme</button>
         </div>
+        <div id="registrationSuccess" class="registration-success" style="display:none;"></div>
         <form id="registerForm">
           <div class="auth-row">
-            <label for="username">Username</label>
-            <input id="username" type="text" autocomplete="username" required />
+            <label for="username">Email</label>
+            <input id="username" type="email" autocomplete="email" placeholder="you@example.com" required />
           </div>
           <div class="auth-row">
             <label for="password">Password</label>

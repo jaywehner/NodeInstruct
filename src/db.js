@@ -45,6 +45,8 @@ function initSchema() {
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL CHECK(role IN ('admin', 'editor', 'view_only')),
       force_password_change INTEGER NOT NULL DEFAULT 0,
+      email_verified INTEGER NOT NULL DEFAULT 0,
+      verification_token TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -95,12 +97,33 @@ function initSchema() {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      user_id TEXT PRIMARY KEY,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_flows_owner ON flows(owner_id);
     CREATE INDEX IF NOT EXISTS idx_flows_public ON flows(is_public);
     CREATE INDEX IF NOT EXISTS idx_uploads_owner ON uploads(owner_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
     CREATE INDEX IF NOT EXISTS idx_rate_limits_reset ON rate_limits(reset_at);
   `);
+}
+
+function migrateSchema() {
+  const existingColumns = new Set(
+    (db.prepare('PRAGMA table_info(users)').all() || []).map((c) => c.name)
+  );
+  if (!existingColumns.has('email_verified')) {
+    db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0');
+    db.exec('UPDATE users SET email_verified = 1');
+  }
+  if (!existingColumns.has('verification_token')) {
+    db.exec('ALTER TABLE users ADD COLUMN verification_token TEXT');
+  }
 }
 
 function migrateLegacyData() {
@@ -164,11 +187,19 @@ function migrateLegacyData() {
 
 function ensureDefaultSettings() {
   db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('max_upload_mb', '250');
-  db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('allow_self_register', '0');
+  db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('allow_self_register', '1');
+  db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('setup_complete', '0');
+  db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('smtp_host', '');
+  db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('smtp_port', '587');
+  db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('smtp_user', '');
+  db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('smtp_pass', '');
+  db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('smtp_from', '');
+  db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('smtp_secure', '0');
 }
 
 function initDb() {
   initSchema();
+  migrateSchema();
   migrateLegacyData();
   ensureDefaultSettings();
 }
@@ -187,8 +218,8 @@ function setSetting(key, value) {
 
 function listUsers() {
   return db.prepare(
-    'SELECT id, username, role, force_password_change AS forcePasswordChange, created_at AS createdAt FROM users ORDER BY username COLLATE NOCASE ASC'
-  ).all();
+    'SELECT id, username, role, force_password_change AS forcePasswordChange, email_verified AS emailVerified, verification_token AS verificationToken, created_at AS createdAt FROM users ORDER BY username COLLATE NOCASE ASC'
+  ).all().map((u) => Object.assign(u, { emailVerified: !!u.emailVerified }));
 }
 
 function countUsers() {
@@ -196,27 +227,41 @@ function countUsers() {
 }
 
 function getUserById(id) {
-  return db.prepare(
-    'SELECT id, username, password_hash AS passwordHash, role, force_password_change AS forcePasswordChange, created_at AS createdAt FROM users WHERE id = ?'
+  const u = db.prepare(
+    'SELECT id, username, password_hash AS passwordHash, role, force_password_change AS forcePasswordChange, email_verified AS emailVerified, verification_token AS verificationToken, created_at AS createdAt FROM users WHERE id = ?'
   ).get(id);
+  if (u) u.emailVerified = !!u.emailVerified;
+  return u;
 }
 
 function getUserByUsername(username) {
-  return db.prepare(
-    'SELECT id, username, password_hash AS passwordHash, role, force_password_change AS forcePasswordChange, created_at AS createdAt FROM users WHERE lower(username) = lower(?)'
+  const u = db.prepare(
+    'SELECT id, username, password_hash AS passwordHash, role, force_password_change AS forcePasswordChange, email_verified AS emailVerified, verification_token AS verificationToken, created_at AS createdAt FROM users WHERE lower(username) = lower(?)'
   ).get(username);
+  if (u) u.emailVerified = !!u.emailVerified;
+  return u;
+}
+
+function getUserByVerificationToken(token) {
+  const u = db.prepare(
+    'SELECT id, username, password_hash AS passwordHash, role, force_password_change AS forcePasswordChange, email_verified AS emailVerified, verification_token AS verificationToken, created_at AS createdAt FROM users WHERE verification_token = ?'
+  ).get(token);
+  if (u) u.emailVerified = !!u.emailVerified;
+  return u;
 }
 
 function createUser(user) {
   db.prepare(
-    `INSERT INTO users (id, username, password_hash, role, force_password_change, created_at)
-     VALUES (@id, @username, @password_hash, @role, @force_password_change, @created_at)`
+    `INSERT INTO users (id, username, password_hash, role, force_password_change, email_verified, verification_token, created_at)
+     VALUES (@id, @username, @password_hash, @role, @force_password_change, @email_verified, @verification_token, @created_at)`
   ).run({
     id: user.id,
     username: user.username,
     password_hash: user.passwordHash,
     role: normalizeRole(user.role),
     force_password_change: user.forcePasswordChange ? 1 : 0,
+    email_verified: user.emailVerified ? 1 : 0,
+    verification_token: user.verificationToken || null,
     created_at: user.createdAt || nowIso(),
   });
 }
@@ -229,7 +274,9 @@ function updateUser(id, patch) {
     `UPDATE users
      SET password_hash = @password_hash,
          role = @role,
-         force_password_change = @force_password_change
+         force_password_change = @force_password_change,
+         email_verified = @email_verified,
+         verification_token = @verification_token
      WHERE id = @id`
   ).run({
     id,
@@ -237,6 +284,10 @@ function updateUser(id, patch) {
     role: patch.role ? normalizeRole(patch.role) : current.role,
     force_password_change:
       typeof patch.forcePasswordChange === 'boolean' ? (patch.forcePasswordChange ? 1 : 0) : (current.forcePasswordChange ? 1 : 0),
+    email_verified:
+      typeof patch.emailVerified === 'boolean' ? (patch.emailVerified ? 1 : 0) : (current.emailVerified ? 1 : 0),
+    verification_token:
+      patch.verificationToken !== undefined ? (patch.verificationToken || null) : (current.verificationToken || null),
   });
 
   return true;
@@ -245,6 +296,31 @@ function updateUser(id, patch) {
 function deleteUser(id) {
   const res = db.prepare('DELETE FROM users WHERE id = ?').run(id);
   return res.changes > 0;
+}
+
+function setPasswordResetToken(userId, tokenHash, expiresAt) {
+  db.prepare(
+    `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, created_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET token_hash=excluded.token_hash, expires_at=excluded.expires_at, created_at=excluded.created_at`
+  ).run(userId, tokenHash, expiresAt, nowIso());
+}
+
+function getUserByPasswordResetTokenHash(tokenHash) {
+  const u = db.prepare(
+    `SELECT u.id, u.username, u.password_hash AS passwordHash, u.role,
+            u.force_password_change AS forcePasswordChange, u.email_verified AS emailVerified,
+            u.verification_token AS verificationToken, u.created_at AS createdAt,
+            p.expires_at AS resetExpiresAt
+     FROM password_reset_tokens p JOIN users u ON u.id = p.user_id
+     WHERE p.token_hash = ?`
+  ).get(tokenHash);
+  if (u) u.emailVerified = !!u.emailVerified;
+  return u;
+}
+
+function clearPasswordResetToken(userId) {
+  db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(userId);
 }
 
 function listFlowsForOwner(ownerId) {
@@ -486,9 +562,13 @@ module.exports = {
   listUsers,
   getUserById,
   getUserByUsername,
+  getUserByVerificationToken,
   createUser,
   updateUser,
   deleteUser,
+  setPasswordResetToken,
+  getUserByPasswordResetTokenHash,
+  clearPasswordResetToken,
   listFlowsForOwner,
   getFlowForOwner,
   saveFlow,

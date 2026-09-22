@@ -21,12 +21,12 @@ $(function () {
     const confirmPassword = String($('#confirmPassword').val() || '');
 
     if (!username) {
-      $('#error').text('Please enter a username.');
+      $('#error').text('Please enter your email address.');
       return;
     }
 
-    if (username.length < 3) {
-      $('#error').text('Username must be at least 3 characters long.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username)) {
+      $('#error').text('Please enter a valid email address.');
       return;
     }
 
@@ -47,8 +47,9 @@ $(function () {
     }
 
     NI.apiJson('POST', '/api/auth/register', { username, password, confirmPassword })
-      .done(function () {
-        window.location = '/login';
+      .done(function (resp) {
+        $('#registerForm').hide();
+        $('#registrationSuccess').text((resp && resp.message) || 'Account created. Check your email for a verification link.').show();
       })
       .fail(function (xhr) {
         $('#error').text(NI.formatError(xhr));

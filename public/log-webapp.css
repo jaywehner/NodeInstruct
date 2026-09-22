@@ -1,0 +1,137 @@
+html, body {
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+}
+
+:root {
+  --app-navbar-height: 57px;
+  --app-footer-height: 38px;
+}
+
+.app-content {
+  min-height: 0;
+  height: calc(100vh - var(--app-navbar-height) - var(--app-footer-height));
+  overflow: hidden;
+}
+
+.app-content > .row {
+  height: 100%;
+  min-height: 0;
+}
+
+.app-content main {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-content main > .row {
+  height: 100%;
+  min-height: 0;
+}
+
+.app-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1030;
+  background: var(--bs-body-bg);
+}
+
+.app-footer .d-flex.align-items-center.gap-3.small span {
+  color: inherit;
+}
+
+.app-footer .d-flex.align-items-center.gap-3.small .bi {
+  color: inherit !important;
+}
+
+.app-footer .d-flex.align-items-center.gap-3.small span span {
+  color: inherit !important;
+}
+
+.sidebar {
+  height: 100%;
+}
+
+.sidebar-footer-bar {
+  height: 40px;
+  background: transparent;
+}
+
+.sidebar .overflow-auto {
+  padding-bottom: 14px;
+}
+
+.sidebar {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.file-tree .node {
+  user-select: none;
+}
+
+.file-tree .log-file {
+  color: #28a745;
+}
+
+.file-tree .pdf-file {
+  color: #dc3545;
+}
+
+.file-tree .txt-file {
+  color: #ffc107;
+}
+
+.file-tree .xml-file {
+  color: #0d6efd;
+}
+
+.file-tree .dir {
+  cursor: pointer;
+}
+
+.file-tree .file {
+  cursor: pointer;
+}
+
+.file-tree .file.active {
+  background: rgba(13, 110, 253, 0.2);
+  border-radius: 0.25rem;
+}
+
+.log-output {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+.clickable-card:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.lvl-INFO { color: #9aa0a6; }
+.lvl-DEBUG { color: #8ab4f8; }
+.lvl-WARNING { color: #fbbc04; }
+.lvl-ERROR { color: #ff6b6b; }
+.lvl-SEVERE { color: #ff4d4d; font-weight: 600; }
+
+.top-message-text {
+  font-weight: 700;
+  background-color: #cfe2ff;
+  color: #052c65;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.2rem;
+  display: inline-block;
+  word-break: break-word;
+}
+
+.log-line-highlight {
+  background-color: rgba(255, 221, 0, 0.35);
+  outline: 1px solid rgba(255, 221, 0, 0.6);
+  border-radius: 2px;
+}

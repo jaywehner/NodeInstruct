@@ -104,6 +104,10 @@ function requireAdapter() {
   return activeAdapter;
 }
 
+function isDbReady() {
+  return !!activeAdapter;
+}
+
 function loadSettingsIntoCache(items) {
   settingsCache.clear();
   (items || []).forEach((item) => {
@@ -127,6 +131,12 @@ function wrapSqlite() {
     async initSchema() {
       sqliteModule.initDb();
     },
+    async testServerConnection() {
+      return { ok: true };
+    },
+    async createDatabase() {
+      return { ok: true };
+    },
     async listSettings() {
       return sqliteModule.db.prepare('SELECT key, value FROM settings ORDER BY key').all();
     },
@@ -148,6 +158,9 @@ function wrapSqlite() {
     async getUserByUsername(username) {
       return sqliteModule.getUserByUsername(username);
     },
+    async getUserByVerificationToken(token) {
+      return sqliteModule.getUserByVerificationToken(token);
+    },
     async createUser(user) {
       sqliteModule.createUser(user);
     },
@@ -156,6 +169,15 @@ function wrapSqlite() {
     },
     async deleteUser(id) {
       return sqliteModule.deleteUser(id);
+    },
+    async setPasswordResetToken(userId, tokenHash, expiresAt) {
+      return sqliteModule.setPasswordResetToken(userId, tokenHash, expiresAt);
+    },
+    async getUserByPasswordResetTokenHash(tokenHash) {
+      return sqliteModule.getUserByPasswordResetTokenHash(tokenHash);
+    },
+    async clearPasswordResetToken(userId) {
+      return sqliteModule.clearPasswordResetToken(userId);
     },
     async listFlowsForOwner(ownerId) {
       return sqliteModule.listFlowsForOwner(ownerId);
@@ -233,6 +255,33 @@ async function reloadDb() {
   await initDb();
 }
 
+async function testDatabaseConnection(input) {
+  const engine = String(input.engine || '').toLowerCase();
+  if (engine === 'sqlite') return { ok: true, engine: 'sqlite' };
+  const validated = validateExternalConfig(input);
+  const adapter = createMysqlAdapter(validated);
+  try {
+    await adapter.testServerConnection();
+    return { ok: true, engine: validated.engine, host: validated.host, port: validated.port };
+  } finally {
+    await adapter.close();
+  }
+}
+
+async function createAndInitDatabase(input) {
+  const engine = String(input.engine || '').toLowerCase();
+  if (engine === 'sqlite') return { ok: true, engine: 'sqlite' };
+  const validated = validateExternalConfig(input);
+  const adapter = createMysqlAdapter(validated);
+  try {
+    await adapter.createDatabase();
+    await adapter.initSchema();
+    return { ok: true, engine: validated.engine, host: validated.host, port: validated.port };
+  } finally {
+    await adapter.close();
+  }
+}
+
 async function setSettingValue(key, value) {
   const adapter = requireAdapter();
   await adapter.setSetting(key, value);
@@ -255,6 +304,10 @@ async function getUserByUsername(username) {
   return requireAdapter().getUserByUsername(username);
 }
 
+async function getUserByVerificationToken(token) {
+  return requireAdapter().getUserByVerificationToken(token);
+}
+
 async function createUser(user) {
   return requireAdapter().createUser(user, normalizeRole);
 }
@@ -265,6 +318,18 @@ async function updateUser(id, patch) {
 
 async function deleteUser(id) {
   return requireAdapter().deleteUser(id);
+}
+
+async function setPasswordResetToken(userId, tokenHash, expiresAt) {
+  return requireAdapter().setPasswordResetToken(userId, tokenHash, expiresAt);
+}
+
+async function getUserByPasswordResetTokenHash(tokenHash) {
+  return requireAdapter().getUserByPasswordResetTokenHash(tokenHash);
+}
+
+async function clearPasswordResetToken(userId) {
+  return requireAdapter().clearPasswordResetToken(userId);
 }
 
 async function listFlowsForOwner(ownerId) {
@@ -413,19 +478,26 @@ module.exports = {
   sqliteFile,
   initDb,
   reloadDb,
+  isDbReady,
   normalizeRole,
   getSetting,
   setSetting: setSettingValue,
   getDatabaseStatus: safeDbStatus,
   migrateSqliteToExternal,
   testExternalConnection,
+  testDatabaseConnection,
+  createAndInitDatabase,
   countUsers,
   listUsers,
   getUserById,
   getUserByUsername,
+  getUserByVerificationToken,
   createUser,
   updateUser,
   deleteUser,
+  setPasswordResetToken,
+  getUserByPasswordResetTokenHash,
+  clearPasswordResetToken,
   listFlowsForOwner,
   getFlowForOwner,
   saveFlow,

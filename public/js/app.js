@@ -1036,9 +1036,9 @@ $(function () {
       const f = n.content && n.content.file;
       if (f && f.url) {
         const typeAttr = f.mimeType ? ' type="' + $('<div>').text(String(f.mimeType)).html() + '"' : '';
-        return captionHtml + '<audio controls><source src="' + f.url + '"' + typeAttr + ' /></audio>';
+        return '<div class="audio-wrap">' + captionHtml + '<audio controls><source src="' + f.url + '"' + typeAttr + ' /></audio></div>';
       }
-      return captionHtml + '<div style="font-size:12px;color:var(--muted);">No audio</div>';
+      return '<div class="audio-wrap">' + captionHtml + '<div style="font-size:12px;color:var(--muted);">No audio</div></div>';
     }
 
     return '';
@@ -1385,8 +1385,36 @@ $(function () {
     const n = requireLiveNode(nodeId);
     if (!n) return;
 
+    const PRESET_COLORS = [
+      '#000000', '#ffffff', '#ef4444', '#3b82f6', '#22c55e', '#eab308',
+      '#f97316', '#8b5cf6', '#ec4899', '#14b8a6', '#64748b', '#94a3b8',
+    ];
+
     const dlg = $('<div title="Node Color"></div>');
-    dlg.append('<div class="dialog-field"><label>Color</label><input id="nodeColor" type="color" /></div>');
+    dlg.append(
+      '<div class="dialog-field color-picker-field">' +
+        '<label>Current</label>' +
+        '<div class="color-picker-row">' +
+          '<label for="nodeColor" class="color-swatch" id="nodeColorSwatch"></label>' +
+          '<input id="nodeColor" type="color" style="opacity:0;position:absolute;width:0;height:0;" />' +
+          '<div class="color-grid" id="nodeColorGrid"></div>' +
+        '</div>' +
+      '</div>'
+    );
+
+    const grid = dlg.find('#nodeColorGrid');
+    PRESET_COLORS.forEach(function (c) {
+      $('<div class="swatch" title="' + c + '"></div>')
+        .css('background', c)
+        .on('click', function () {
+          dlg.find('#nodeColor').val(c).trigger('change');
+        })
+        .appendTo(grid);
+    });
+
+    dlg.find('#nodeColor').on('change input', function () {
+      dlg.find('#nodeColorSwatch').css('background', this.value);
+    });
 
     dlg.on('dialogopen', function () {
       const liveNode = requireLiveNode(nodeId);
@@ -1395,7 +1423,7 @@ $(function () {
         return;
       }
       const c = String(liveNode.color || defaultColorForType(liveNode.type));
-      $('#nodeColor').val(c);
+      dlg.find('#nodeColor').val(c).trigger('change');
     });
 
     dlg.dialog({
@@ -1408,7 +1436,7 @@ $(function () {
             dlg.dialog('close');
             return;
           }
-          liveNode.color = String($('#nodeColor').val() || defaultColorForType(liveNode.type));
+          liveNode.color = String(dlg.find('#nodeColor').val() || defaultColorForType(liveNode.type));
           updateNodeElement(liveNode);
           dlg.dialog('close');
         },
@@ -2012,6 +2040,15 @@ $(function () {
 
   $('#zoomReset').on('click', function () {
     setCanvasZoom(1);
+  });
+
+  $('#exportImage').on('click', function () {
+    const name = (state.flowName || 'flow').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'flow';
+    NI.exportElementToImage('canvas', name + '.png');
+  });
+
+  $('#exportPdf').on('click', function () {
+    NI.printFlow();
   });
 
   $('#workspace').on('wheel', function (e) {

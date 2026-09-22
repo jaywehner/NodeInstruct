@@ -5,31 +5,53 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/vendor/jquery-ui/jquery-ui.min.css" />
     <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/cpc-theme.css" />
     <title>Node Instruct - Login</title>
   </head>
   <body>
-    <div class="auth-shell">
-      <div class="auth-card">
-        <div class="auth-title-row">
-          <div class="auth-title">Node Instruct</div>
-          <button type="button" id="themeToggle" class="ghost">Theme</button>
-        </div>
-        <form id="loginForm">
-          <div class="auth-row">
-            <label for="username">Username</label>
-            <input id="username" type="text" autocomplete="username" required />
+    <div class="login-layout">
+      <section class="login-hero">
+        <div class="login-hero-content">
+          <div class="login-company">
+            <div class="login-company-name">Cobalt Prairie</div>
+            <div class="login-company-subtitle">Consulting</div>
           </div>
-          <div class="auth-row">
-            <label for="password">Password</label>
-            <input id="password" type="password" autocomplete="current-password" required />
+          <h1>Node Instruct</h1>
+          <p class="login-lead">Build clear, visual instruction flows that guide people through complex processes one step at a time.</p>
+          <div class="login-features">
+            <div class="login-feature"><span class="login-feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="7" height="6" rx="1"/><rect x="14" y="14" width="7" height="6" rx="1"/><path d="M10 7h3a3 3 0 0 1 3 3v4M14 17h-3a3 3 0 0 1-3-3v-4"/></svg></span><div><strong>Visual workflows</strong><span>Arrange connected instruction cards on a flexible canvas.</span></div></div>
+            <div class="login-feature"><span class="login-feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 15-5-5L5 20"/><path d="m14 14-2-2-5 5"/></svg></span><div><strong>Rich media</strong><span>Include text, images, files, audio, and video in each flow.</span></div></div>
+            <div class="login-feature"><span class="login-feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg></span><div><strong>Secure sharing</strong><span>Publish read-only flows and share them with a direct link.</span></div></div>
+            <div class="login-feature"><span class="login-feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg></span><div><strong>Export anywhere</strong><span>Save complete flows as images or printable PDF documents.</span></div></div>
           </div>
-          <button type="submit" class="primary">Login</button>
-          <div id="error" class="error"></div>
-        </form>
-        <div class="auth-footer">
-          <button type="button" id="registerLink" class="ghost" style="display:none; width:100%;">Create an account</button>
         </div>
-      </div>
+      </section>
+      <section class="login-form-panel">
+        <div class="auth-card login-card">
+          <div class="auth-title-row">
+            <div><div class="auth-title">Welcome back</div><div class="login-form-subtitle">Sign in to manage your instruction flows.</div></div>
+          </div>
+          <form id="loginForm">
+            <div class="auth-row">
+              <label for="username">Email</label>
+              <input id="username" type="email" autocomplete="username" placeholder="you@example.com" required />
+            </div>
+            <div class="auth-row">
+              <label for="password">Password</label>
+              <input id="password" type="password" autocomplete="current-password" placeholder="Enter your password" required />
+            </div>
+            <button type="submit" class="primary">Sign in</button>
+            <a class="forgot-password-link" href="/forgot-password">Forgot your password?</a>
+            <div id="error" class="error"></div>
+          </form>
+          <div class="auth-footer login-register">
+            <div>New to Node Instruct?</div>
+            <button type="button" id="registerLink" class="ghost">Create an account</button>
+            <button type="button" id="resendVerification" class="ghost">Resend verification email</button>
+            <div id="registerStatus" class="auth-help"></div>
+          </div>
+        </div>
+      </section>
     </div>
 
     <script src="/vendor/jquery/jquery.min.js"></script>

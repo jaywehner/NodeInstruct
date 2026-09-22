@@ -9,11 +9,100 @@ $(function () {
   svgEl.setAttribute('height', String(canvasHeight));
   svgEl.setAttribute('viewBox', `0 0 ${canvasWidth} ${canvasHeight}`);
 
+  let publicNodes = [];
+  let publicLinks = [];
+
   const svgNs = 'http://www.w3.org/2000/svg';
   const OUTPUT_COLOR_OPTIONS = [
     '#000000', '#ffffff', '#ef4444', '#3b82f6', '#22c55e', '#eab308',
     '#f97316', '#8b5cf6', '#ec4899', '#374151', '#d1d5db',
   ];
+
+  const MIN_ZOOM = 0.5;
+  const MAX_ZOOM = 2;
+  let currentZoom = 1;
+
+  function clampZoom(val) {
+    return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, val));
+  }
+
+  function updateZoomUi() {
+    const pct = Math.round(currentZoom * 100);
+    $('#zoomReset').text(pct + '%');
+    $('#zoomOut').prop('disabled', currentZoom <= MIN_ZOOM + 0.001);
+    $('#zoomIn').prop('disabled', currentZoom >= MAX_ZOOM - 0.001);
+  }
+
+  function applyZoom(zoom) {
+    currentZoom = clampZoom(zoom);
+    canvasEl.style.zoom = String(currentZoom);
+    updateZoomUi();
+  }
+
+  function setCanvasZoom(nextZoom) {
+    applyZoom(nextZoom);
+    localStorage.setItem('ni_public_flow_zoom', String(currentZoom));
+  }
+
+  function loadCanvasZoom() {
+    const saved = localStorage.getItem('ni_public_flow_zoom');
+    if (saved !== null) {
+      const val = parseFloat(saved);
+      if (!Number.isNaN(val)) {
+        currentZoom = clampZoom(val);
+      }
+    }
+    applyZoom(currentZoom);
+  }
+
+  function computeFitZoom(nodes) {
+    if (!nodes || !nodes.length) return 1;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    nodes.forEach(function (n) {
+      const w = n.w || 260;
+      const h = n.h || 150;
+      minX = Math.min(minX, n.x);
+      minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + w);
+      maxY = Math.max(maxY, n.y + h);
+    });
+    const contentW = Math.max(1, maxX - minX);
+    const contentH = Math.max(1, maxY - minY);
+    const pad = 80;
+    const availW = Math.max(200, window.innerWidth - pad);
+    const availH = Math.max(150, window.innerHeight - 60 - pad);
+    return clampZoom(Math.min(availW / contentW, availH / contentH));
+  }
+
+  function normalizeNodePositions(nodes, padding) {
+    const result = nodes || [];
+    if (!result.length) return result;
+    let minX = Infinity, minY = Infinity;
+    result.forEach(function (n) {
+      minX = Math.min(minX, n.x);
+      minY = Math.min(minY, n.y);
+    });
+    const offsetX = Math.max(0, padding - minX);
+    const offsetY = Math.max(0, padding - minY);
+    if (offsetX || offsetY) {
+      result.forEach(function (n) {
+        n.x += offsetX;
+        n.y += offsetY;
+      });
+    }
+    return result;
+  }
+
+  function prepareNodes(rawNodes) {
+    const nodes = (rawNodes || []).map(function (n) {
+      const nn = Object.assign({}, n);
+      if (!nn.w) nn.w = 260;
+      if (!nn.h) nn.h = 150;
+      if (!nn.content) nn.content = {};
+      return nn;
+    });
+    return normalizeNodePositions(nodes, 40);
+  }
 
   function createSvgEl(tag) {
     return document.createElementNS(svgNs, tag);
@@ -47,7 +136,10 @@ $(function () {
     if (!el) return null;
     const r = el.getBoundingClientRect();
     const cr = canvasEl.getBoundingClientRect();
-    return { x: r.left - cr.left + r.width / 2, y: r.top - cr.top + r.height / 2 };
+    return {
+      x: (r.left - cr.left + r.width / 2) / currentZoom,
+      y: (r.top - cr.top + r.height / 2) / currentZoom,
+    };
   }
 
   function bezierPath(a, b) {
@@ -170,32 +262,14 @@ $(function () {
     );
   }
 
-  function render(flow) {
-    const nodes = ((flow && flow.data && flow.data.nodes) || []).map(function (n) {
-      const nn = Object.assign({}, n);
-      if (!nn.w) nn.w = 260;
-      if (!nn.h) nn.h = 150;
-      if (!nn.content) nn.content = {};
-      return nn;
-    });
-
-    const links = (flow && flow.data && flow.data.links) || [];
-
-    nodeLayer.empty();
-    nodes.forEach(function (n) {
-      const card = $(buildNodeHtml(n));
-      card.css({ left: n.x, top: n.y, width: n.w, height: n.h });
-      if (card[0] && n.color) card[0].style.setProperty('--node-color', n.color);
-      nodeLayer.append(card);
-    });
-
+  function updateLinks() {
     svgEl.innerHTML = '';
-    links.forEach(function (l) {
+    publicLinks.forEach(function (l) {
       const a = portCenter(l.sourceId, l.sourcePort);
       const b = portCenter(l.targetId, 'in');
       if (!a || !b) return;
       const path = createSvgEl('path');
-      const sourceNode = nodes.find(function (n) { return n.id === l.sourceId; });
+      const sourceNode = publicNodes.find(function (n) { return n.id === l.sourceId; });
       const sourceOutput = normalizeOutputs(sourceNode).find(function (o) { return o.id === l.sourcePort; });
       const stroke = normalizeOutputColor(sourceOutput && sourceOutput.color, defaultOutputColorForId(l.sourcePort));
       path.setAttribute('class', 'link custom');
@@ -205,9 +279,59 @@ $(function () {
     });
   }
 
+  function render(nodes, links) {
+    publicNodes = nodes;
+    publicLinks = links;
+    nodeLayer.empty();
+    nodes.forEach(function (n) {
+      const card = $(buildNodeHtml(n));
+      card.css({ left: n.x, top: n.y, width: n.w, height: n.h });
+      if (card[0] && n.color) card[0].style.setProperty('--node-color', n.color);
+      card.draggable({
+        handle: '.node-header',
+        containment: '#canvas',
+        drag: function (evt, ui) {
+          n.x = ui.position.left;
+          n.y = ui.position.top;
+          updateLinks();
+        },
+        stop: function (evt, ui) {
+          n.x = ui.position.left;
+          n.y = ui.position.top;
+          updateLinks();
+        },
+      });
+      nodeLayer.append(card);
+    });
+
+    updateLinks();
+  }
+
   $('#themeToggle').on('click', function () {
     NI.toggleTheme();
   });
+
+  $('#zoomIn').on('click', function () {
+    setCanvasZoom(currentZoom + 0.1);
+  });
+  $('#zoomOut').on('click', function () {
+    setCanvasZoom(currentZoom - 0.1);
+  });
+  $('#zoomReset').on('click', function () {
+    setCanvasZoom(1);
+  });
+
+  $('#exportImage').on('click', function () {
+    const flowName = $('#flowTitle').text() || 'flow';
+    const name = flowName.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'flow';
+    NI.exportElementToImage('canvas', name + '.png');
+  });
+
+  $('#exportPdf').on('click', function () {
+    NI.printFlow();
+  });
+
+  loadCanvasZoom();
 
   const token = window.location.pathname.split('/').filter(Boolean).pop() || '';
   if (!token) {
@@ -223,8 +347,13 @@ $(function () {
         return;
       }
 
-      setStatus((flow.name || 'Public Flow') + ' by ' + (flow.ownerUsername || '')); 
-      render(flow);
+      setStatus((flow.name || 'Public Flow') + ' by ' + (flow.ownerUsername || ''));
+      const nodes = prepareNodes(flow.data && flow.data.nodes);
+      const links = (flow.data && flow.data.links) || [];
+      render(nodes, links);
+      if (!localStorage.getItem('ni_public_flow_zoom')) {
+        setCanvasZoom(computeFitZoom(nodes));
+      }
     })
     .fail(function () {
       setStatus('Flow not found');

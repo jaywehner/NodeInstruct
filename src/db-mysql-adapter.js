@@ -27,19 +27,78 @@ function createMysqlAdapter(config) {
     await query('SELECT 1 AS ok');
   }
 
+  async function tableExists(name) {
+    const rows = await query(
+      `SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1`,
+      [name]
+    );
+    return rows && rows.length > 0;
+  }
+
+  async function columnExists(table, column) {
+    const rows = await query(
+      `SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? LIMIT 1`,
+      [table, column]
+    );
+    return rows && rows.length > 0;
+  }
+
+  async function safeCreateTable(name, sql) {
+    try {
+      await query(sql);
+    } catch (err) {
+      if (err && err.code === 'ER_TABLE_EXISTS_ERROR') {
+        if (!(await tableExists(name))) {
+          await query(`DROP TABLE IF EXISTS \`${String(name).replace(/`/g, '``')}\``);
+          await query(sql);
+        }
+        return;
+      }
+      throw err;
+    }
+  }
+
   async function initSchema() {
     await query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
-    await query(`
+    await safeCreateTable('users', `
       CREATE TABLE IF NOT EXISTS users (
         id VARCHAR(64) PRIMARY KEY,
         username VARCHAR(191) NOT NULL UNIQUE,
         password_hash TEXT NOT NULL,
         role ENUM('admin', 'editor', 'view_only') NOT NULL,
         force_password_change TINYINT(1) NOT NULL DEFAULT 0,
+        email_verified TINYINT(1) NOT NULL DEFAULT 0,
+        verification_token VARCHAR(191) NULL,
         created_at VARCHAR(40) NOT NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    await query(`
+    const userColumns = [
+      { name: 'username', def: 'VARCHAR(191) NOT NULL UNIQUE' },
+      { name: 'password_hash', def: 'TEXT NOT NULL' },
+      { name: 'role', def: "ENUM('admin', 'editor', 'view_only') NOT NULL" },
+      { name: 'force_password_change', def: 'TINYINT(1) NOT NULL DEFAULT 0' },
+      { name: 'email_verified', def: 'TINYINT(1) NOT NULL DEFAULT 0' },
+      { name: 'verification_token', def: 'VARCHAR(191) NULL' },
+      { name: 'created_at', def: 'VARCHAR(40) NOT NULL' },
+    ];
+    let addedEmailVerified = false;
+    for (const col of userColumns) {
+      if (!(await columnExists('users', col.name))) {
+        await query(`ALTER TABLE users ADD COLUMN ${col.name} ${col.def}`);
+        if (col.name === 'email_verified') addedEmailVerified = true;
+      }
+    }
+    if (addedEmailVerified) await query('UPDATE users SET email_verified = 1');
+    await safeCreateTable('password_reset_tokens', `
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        user_id VARCHAR(64) PRIMARY KEY,
+        token_hash VARCHAR(64) NOT NULL UNIQUE,
+        expires_at BIGINT NOT NULL,
+        created_at VARCHAR(40) NOT NULL,
+        CONSTRAINT fk_password_reset_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    await safeCreateTable('flows', `
       CREATE TABLE IF NOT EXISTS flows (
         id VARCHAR(64) PRIMARY KEY,
         owner_id VARCHAR(64) NOT NULL,
@@ -54,7 +113,7 @@ function createMysqlAdapter(config) {
         CONSTRAINT fk_flows_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    await query(`
+    await safeCreateTable('uploads', `
       CREATE TABLE IF NOT EXISTS uploads (
         id VARCHAR(64) PRIMARY KEY,
         owner_id VARCHAR(64) NOT NULL,
@@ -71,13 +130,13 @@ function createMysqlAdapter(config) {
         CONSTRAINT fk_uploads_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    await query(`
+    await safeCreateTable('settings', `
       CREATE TABLE IF NOT EXISTS settings (
         \`key\` VARCHAR(191) PRIMARY KEY,
         \`value\` LONGTEXT NOT NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    await query(`
+    await safeCreateTable('sessions', `
       CREATE TABLE IF NOT EXISTS sessions (
         sid VARCHAR(191) PRIMARY KEY,
         sess LONGTEXT NOT NULL,
@@ -87,7 +146,7 @@ function createMysqlAdapter(config) {
         INDEX idx_sessions_expires (expires_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    await query(`
+    await safeCreateTable('rate_limits', `
       CREATE TABLE IF NOT EXISTS rate_limits (
         \`key\` VARCHAR(191) PRIMARY KEY,
         count INT NOT NULL,
@@ -97,7 +156,36 @@ function createMysqlAdapter(config) {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     await query('INSERT IGNORE INTO settings (`key`, `value`) VALUES (?, ?)', ['max_upload_mb', '250']);
-    await query('INSERT IGNORE INTO settings (`key`, `value`) VALUES (?, ?)', ['allow_self_register', '0']);
+    await query('INSERT IGNORE INTO settings (`key`, `value`) VALUES (?, ?)', ['allow_self_register', '1']);
+  }
+
+  async function testServerConnection() {
+    const conn = await mysql.createConnection({
+      host: config.host,
+      port: config.port,
+      user: config.username,
+      password: config.password,
+    });
+    try {
+      await conn.execute('SELECT 1');
+    } finally {
+      await conn.end();
+    }
+  }
+
+  async function createDatabase() {
+    const conn = await mysql.createConnection({
+      host: config.host,
+      port: config.port,
+      user: config.username,
+      password: config.password,
+    });
+    try {
+      const safeDb = String(config.database || '').replace(/`/g, '``');
+      await conn.query(`CREATE DATABASE IF NOT EXISTS \`${safeDb}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+    } finally {
+      await conn.end();
+    }
   }
 
   async function listSettings() {
@@ -119,13 +207,15 @@ function createMysqlAdapter(config) {
 
   async function listUsers() {
     const rows = await query(
-      'SELECT id, username, role, force_password_change AS forcePasswordChange, created_at AS createdAt FROM users ORDER BY username ASC'
+      'SELECT id, username, role, force_password_change AS forcePasswordChange, email_verified AS emailVerified, verification_token AS verificationToken, created_at AS createdAt FROM users ORDER BY username ASC'
     );
     return rows.map((row) => ({
       id: row.id,
       username: row.username,
       role: row.role,
       forcePasswordChange: !!row.forcePasswordChange,
+      emailVerified: !!row.emailVerified,
+      verificationToken: row.verificationToken || null,
       createdAt: row.createdAt,
     }));
   }
@@ -137,7 +227,7 @@ function createMysqlAdapter(config) {
 
   async function getUserById(id) {
     const rows = await query(
-      'SELECT id, username, password_hash AS passwordHash, role, force_password_change AS forcePasswordChange, created_at AS createdAt FROM users WHERE id = ? LIMIT 1',
+      'SELECT id, username, password_hash AS passwordHash, role, force_password_change AS forcePasswordChange, email_verified AS emailVerified, verification_token AS verificationToken, created_at AS createdAt FROM users WHERE id = ? LIMIT 1',
       [id]
     );
     if (!rows.length) return null;
@@ -147,13 +237,15 @@ function createMysqlAdapter(config) {
       passwordHash: rows[0].passwordHash,
       role: rows[0].role,
       forcePasswordChange: !!rows[0].forcePasswordChange,
+      emailVerified: !!rows[0].emailVerified,
+      verificationToken: rows[0].verificationToken || null,
       createdAt: rows[0].createdAt,
     };
   }
 
   async function getUserByUsername(username) {
     const rows = await query(
-      'SELECT id, username, password_hash AS passwordHash, role, force_password_change AS forcePasswordChange, created_at AS createdAt FROM users WHERE LOWER(username) = LOWER(?) LIMIT 1',
+      'SELECT id, username, password_hash AS passwordHash, role, force_password_change AS forcePasswordChange, email_verified AS emailVerified, verification_token AS verificationToken, created_at AS createdAt FROM users WHERE LOWER(username) = LOWER(?) LIMIT 1',
       [username]
     );
     if (!rows.length) return null;
@@ -163,20 +255,42 @@ function createMysqlAdapter(config) {
       passwordHash: rows[0].passwordHash,
       role: rows[0].role,
       forcePasswordChange: !!rows[0].forcePasswordChange,
+      emailVerified: !!rows[0].emailVerified,
+      verificationToken: rows[0].verificationToken || null,
+      createdAt: rows[0].createdAt,
+    };
+  }
+
+  async function getUserByVerificationToken(token) {
+    const rows = await query(
+      'SELECT id, username, password_hash AS passwordHash, role, force_password_change AS forcePasswordChange, email_verified AS emailVerified, verification_token AS verificationToken, created_at AS createdAt FROM users WHERE verification_token = ? LIMIT 1',
+      [token]
+    );
+    if (!rows.length) return null;
+    return {
+      id: rows[0].id,
+      username: rows[0].username,
+      passwordHash: rows[0].passwordHash,
+      role: rows[0].role,
+      forcePasswordChange: !!rows[0].forcePasswordChange,
+      emailVerified: !!rows[0].emailVerified,
+      verificationToken: rows[0].verificationToken || null,
       createdAt: rows[0].createdAt,
     };
   }
 
   async function createUser(user, normalizeRole) {
     await query(
-      `INSERT INTO users (id, username, password_hash, role, force_password_change, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (id, username, password_hash, role, force_password_change, email_verified, verification_token, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         user.id,
         user.username,
         user.passwordHash,
         normalizeRole(user.role),
         user.forcePasswordChange ? 1 : 0,
+        user.emailVerified ? 1 : 0,
+        user.verificationToken || null,
         user.createdAt || nowIso(),
       ]
     );
@@ -187,12 +301,14 @@ function createMysqlAdapter(config) {
     if (!current) return false;
     await query(
       `UPDATE users
-       SET password_hash = ?, role = ?, force_password_change = ?
+       SET password_hash = ?, role = ?, force_password_change = ?, email_verified = ?, verification_token = ?
        WHERE id = ?`,
       [
         patch.passwordHash || current.passwordHash,
         patch.role ? normalizeRole(patch.role) : current.role,
         typeof patch.forcePasswordChange === 'boolean' ? (patch.forcePasswordChange ? 1 : 0) : (current.forcePasswordChange ? 1 : 0),
+        typeof patch.emailVerified === 'boolean' ? (patch.emailVerified ? 1 : 0) : (current.emailVerified ? 1 : 0),
+        patch.verificationToken !== undefined ? (patch.verificationToken || null) : (current.verificationToken || null),
         id,
       ]
     );
@@ -202,6 +318,36 @@ function createMysqlAdapter(config) {
   async function deleteUser(id) {
     const result = await query('DELETE FROM users WHERE id = ?', [id]);
     return result.affectedRows > 0;
+  }
+
+  async function setPasswordResetToken(userId, tokenHash, expiresAt) {
+    await query(
+      `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, created_at)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE token_hash = VALUES(token_hash), expires_at = VALUES(expires_at), created_at = VALUES(created_at)`,
+      [userId, tokenHash, expiresAt, nowIso()]
+    );
+  }
+
+  async function getUserByPasswordResetTokenHash(tokenHash) {
+    const rows = await query(
+      `SELECT u.id, u.username, u.password_hash AS passwordHash, u.role,
+              u.force_password_change AS forcePasswordChange, u.email_verified AS emailVerified,
+              u.verification_token AS verificationToken, u.created_at AS createdAt,
+              p.expires_at AS resetExpiresAt
+       FROM password_reset_tokens p JOIN users u ON u.id = p.user_id
+       WHERE p.token_hash = ? LIMIT 1`,
+      [tokenHash]
+    );
+    if (!rows.length) return null;
+    const user = rows[0];
+    user.forcePasswordChange = !!user.forcePasswordChange;
+    user.emailVerified = !!user.emailVerified;
+    return user;
+  }
+
+  async function clearPasswordResetToken(userId) {
+    await query('DELETE FROM password_reset_tokens WHERE user_id = ?', [userId]);
   }
 
   async function listFlowsForOwner(ownerId) {
@@ -440,9 +586,9 @@ function createMysqlAdapter(config) {
 
       for (const row of data.users || []) {
         await conn.execute(
-          `INSERT INTO users (id, username, password_hash, role, force_password_change, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [row.id, row.username, row.password_hash, row.role, row.force_password_change ? 1 : 0, row.created_at]
+          `INSERT INTO users (id, username, password_hash, role, force_password_change, email_verified, verification_token, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [row.id, row.username, row.password_hash, row.role, row.force_password_change ? 1 : 0, row.email_verified ? 1 : 0, row.verification_token || null, row.created_at]
         );
       }
 
@@ -493,6 +639,8 @@ function createMysqlAdapter(config) {
   return {
     engine: config.engine,
     testConnection,
+    testServerConnection,
+    createDatabase,
     initSchema,
     listSettings,
     getSetting,
@@ -501,9 +649,13 @@ function createMysqlAdapter(config) {
     countUsers,
     getUserById,
     getUserByUsername,
+    getUserByVerificationToken,
     createUser,
     updateUser,
     deleteUser,
+    setPasswordResetToken,
+    getUserByPasswordResetTokenHash,
+    clearPasswordResetToken,
     listFlowsForOwner,
     getFlowForOwner,
     saveFlow,

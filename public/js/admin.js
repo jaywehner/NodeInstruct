@@ -126,12 +126,23 @@ $(function () {
     };
   }
 
+  function applySmtpSettings(smtp) {
+    const s = smtp || {};
+    $('#smtpHost').val(s.host || '');
+    $('#smtpPort').val(s.port || 587);
+    $('#smtpUser').val(s.user || '');
+    $('#smtpPass').val(s.pass || '');
+    $('#smtpFrom').val(s.from || '');
+    $('#smtpSecure').prop('checked', !!s.secure);
+  }
+
   function loadSettings() {
     return NI.apiJson('GET', '/api/admin/settings')
       .done(function (resp) {
         $('#maxUploadMb').val((resp && resp.maxUploadMb) || 250);
         $('#allowSelfRegister').prop('checked', !!(resp && resp.allowSelfRegister));
         applyDatabaseSettings(resp && resp.database);
+        applySmtpSettings(resp && resp.smtp);
       });
   }
 
@@ -155,6 +166,7 @@ $(function () {
       const tr = $('<tr></tr>');
       tr.append($('<td></td>').text(u.username));
       tr.append($('<td></td>').text(roleLabel(u.role)));
+      tr.append($('<td></td>').text(u.emailVerified ? 'Yes' : 'No'));
       tr.append($('<td></td>').text(u.forcePasswordChange ? 'Yes' : 'No'));
       tr.append($('<td></td>').text(u.createdAt ? new Date(u.createdAt).toLocaleString() : ''));
 
@@ -194,7 +206,7 @@ $(function () {
 
     dlg.append(
       $('<div class="dialog-field"></div>')
-        .append('<label>Username</label>')
+        .append('<label>Email</label>')
         .append('<input id="au_username" type="text" />')
     );
 
@@ -378,6 +390,47 @@ $(function () {
       .fail(function (xhr) {
         setStatus(NI.formatError(xhr));
       });
+  });
+
+  function getSmtpForm() {
+    return {
+      host: String($('#smtpHost').val() || '').trim(),
+      port: parseInt(String($('#smtpPort').val() || '587'), 10) || 587,
+      user: String($('#smtpUser').val() || '').trim(),
+      pass: String($('#smtpPass').val() || ''),
+      from: String($('#smtpFrom').val() || '').trim(),
+      secure: !!$('#smtpSecure').prop('checked'),
+      testEmail: String($('#smtpTestEmail').val() || '').trim(),
+    };
+  }
+
+  $('#testSmtp').on('click', function () {
+    $('#smtpStatus').text('Testing...');
+    NI.apiJson('POST', '/api/admin/smtp/test', getSmtpForm())
+      .done(function () {
+        $('#smtpStatus').text('SMTP test passed.');
+      })
+      .fail(function (xhr) {
+        $('#smtpStatus').text(NI.formatError(xhr));
+      });
+  });
+
+  $('#saveSmtp').on('click', function () {
+    $('#smtpStatus').text('Saving...');
+    NI.apiJson('PUT', '/api/admin/smtp', getSmtpForm())
+      .done(function () {
+        $('#smtpStatus').text('SMTP settings saved.');
+      })
+      .fail(function (xhr) {
+        $('#smtpStatus').text(NI.formatError(xhr));
+      });
+  });
+
+  $('.tab-btn').on('click', function () {
+    $('.tab-btn').removeClass('active');
+    $(this).addClass('active');
+    $('.tab-section').hide();
+    $('#tab-' + $(this).data('tab')).show();
   });
 
   loadSettings();

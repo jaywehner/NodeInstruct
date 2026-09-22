@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/vendor/jquery-ui/jquery-ui.min.css" />
     <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/cpc-theme.css" />
     <title>Node Instruct</title>
   </head>
   <body>
@@ -64,6 +65,12 @@
           <div class="sidebar-group sidebar-footer">
             <button type="button" id="autoFormat" class="ghost">Auto Format</button>
           </div>
+
+          <div class="sidebar-group">
+            <div class="sidebar-title">Export</div>
+            <button type="button" id="exportImage" class="ghost">Save as Image</button>
+            <button type="button" id="exportPdf" class="ghost">Save as PDF</button>
+          </div>
         </div>
       </div>
       <div id="sidebarResizer" aria-hidden="true"></div>
@@ -78,6 +85,7 @@
 
     <script src="/vendor/jquery/jquery.min.js"></script>
     <script src="/vendor/jquery-ui/jquery-ui.min.js"></script>
+    <script src="/vendor/html-to-image/html-to-image.js"></script>
     <script src="/static/js/common.js"></script>
     <script src="/static/js/app.js"></script>
   </body>
